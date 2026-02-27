@@ -1,0 +1,35 @@
+# ============================================================
+# docker-compose.yml — MyEngineAPI Docker bridge service
+#
+# Drop this into your existing docker-compose.yml or include
+# it as an override file. The key requirement is mounting the
+# Docker socket so the service can query the Docker daemon.
+# ============================================================
+
+version: "3.9"
+
+services:
+  myengineapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: myengineapi
+    restart: unless-stopped
+    ports:
+      - "8000:8000"         # expose on host; remove if only internal access is needed
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only is sufficient for most operations
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - internal            # join your existing internal network
+
+# ---------------------------------------------------------------------------
+# If you need the service to be able to START/STOP/REMOVE containers,
+# change :ro to :rw above. Read-only is enough for listing and log access.
+# ---------------------------------------------------------------------------
+
+# Reference your existing network here instead of creating a new one:
+networks:
+  internal:
+    external: true          # set to false if you want this file to create it
