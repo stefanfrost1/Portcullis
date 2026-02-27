@@ -1,8 +1,11 @@
 """
-MyEngineAPI — Docker management bridge service.
+MyEngineAPI — Docker + Redis management bridge service.
 
-Provides a REST + WebSocket API for the UI to interact with the Docker
-daemon without the UI container needing direct socket access.
+Provides a REST + WebSocket API for the UI to interact with:
+  - The Docker daemon (containers, images, networks, volumes, logs)
+  - Redis (key browser, server ops, pub/sub, monitor, analysis)
+
+Neither the Docker socket nor Redis is exposed directly to the UI.
 
 Base path: /api/v1
 """
@@ -12,17 +15,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.routers import containers, logs, images, networks, volumes, system
+from src.routers import redis_keys, redis_server
 
 API_PREFIX = "/api/v1"
 
 app = FastAPI(
-    title="MyEngineAPI — Docker Bridge",
+    title="MyEngineAPI — Docker & Redis Bridge",
     description=(
-        "Exposes Docker daemon capabilities over HTTP/WebSocket so that the UI "
-        "can display container status, stream logs, search logs, and manage "
-        "containers without direct Docker socket access."
+        "Shields the UI from direct Docker socket and Redis access. "
+        "Exposes container management, log streaming, image/network/volume ops, "
+        "and a full Redis operations API (key browser, server info, pub/sub, "
+        "MONITOR stream, keyspace analysis, slow log, memory stats, and more)."
     ),
-    version="1.0.0",
+    version="2.0.0",
     docs_url=f"{API_PREFIX}/docs",
     redoc_url=f"{API_PREFIX}/redoc",
     openapi_url=f"{API_PREFIX}/openapi.json",
@@ -57,11 +62,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # ---------------------------------------------------------------------------
 
 app.include_router(containers.router, prefix=API_PREFIX)
-app.include_router(logs.router, prefix=API_PREFIX)       # /api/v1/containers/{id}/logs/…
+app.include_router(logs.router, prefix=API_PREFIX)        # /api/v1/containers/{id}/logs/…
 app.include_router(images.router, prefix=API_PREFIX)
 app.include_router(networks.router, prefix=API_PREFIX)
 app.include_router(volumes.router, prefix=API_PREFIX)
 app.include_router(system.router, prefix=API_PREFIX)
+
+# Redis routers — /api/v1/redis/…
+app.include_router(redis_keys.router, prefix=API_PREFIX)   # key browser + type operations
+app.include_router(redis_server.router, prefix=API_PREFIX) # server ops, monitoring, analysis
 
 
 # ---------------------------------------------------------------------------

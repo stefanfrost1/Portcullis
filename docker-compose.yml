@@ -1,9 +1,12 @@
 # ============================================================
-# docker-compose.yml — MyEngineAPI Docker bridge service
+# docker-compose.yml — MyEngineAPI (Docker + Redis bridge)
 #
-# Drop this into your existing docker-compose.yml or include
-# it as an override file. The key requirement is mounting the
-# Docker socket so the service can query the Docker daemon.
+# Drop this service definition into your existing docker-compose.yml
+# or use it as an override file.
+#
+# Requirements:
+#   - Mount the Docker socket so the service can query the Docker daemon.
+#   - Set REDIS_HOST to the service name of your Redis container.
 # ============================================================
 
 version: "3.9"
@@ -18,18 +21,21 @@ services:
     ports:
       - "8000:8000"         # expose on host; remove if only internal access is needed
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only is sufficient for most operations
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Change :ro → :rw above if you need container start/stop/remove actions
     environment:
       - PYTHONUNBUFFERED=1
+      # ---- Redis connection (required for /api/v1/redis/* endpoints) ----
+      - REDIS_HOST=redis          # service name of your Redis container
+      - REDIS_PORT=6379
+      # - REDIS_PASSWORD=secret   # uncomment if your Redis requires auth
+      # - REDIS_DB=0              # default database index (0–15)
     networks:
       - internal            # join your existing internal network
 
 # ---------------------------------------------------------------------------
-# If you need the service to be able to START/STOP/REMOVE containers,
-# change :ro to :rw above. Read-only is enough for listing and log access.
-# ---------------------------------------------------------------------------
-
 # Reference your existing network here instead of creating a new one:
+# ---------------------------------------------------------------------------
 networks:
   internal:
     external: true          # set to false if you want this file to create it
