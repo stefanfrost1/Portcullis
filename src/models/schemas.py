@@ -124,6 +124,13 @@ class NetworkSummary(BaseModel):
     created: str
 
 
+class NetworkCreateRequest(BaseModel):
+    name: str
+    driver: str = "bridge"
+    internal: bool = False
+    labels: Optional[dict] = None
+
+
 # ---------------------------------------------------------------------------
 # Volume schemas
 # ---------------------------------------------------------------------------
@@ -135,6 +142,12 @@ class VolumeSummary(BaseModel):
     labels: dict
     scope: str
     created: Optional[str] = None
+
+
+class VolumeCreateRequest(BaseModel):
+    name: str
+    driver: str = "local"
+    labels: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
