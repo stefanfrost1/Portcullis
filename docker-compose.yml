@@ -1,9 +1,15 @@
 # ============================================================
-# docker-compose.yml — MyEngineAPI Docker bridge service
+# docker-compose.yml — MyEngineAPI (Docker + Redis bridge)
 #
-# Drop this into your existing docker-compose.yml or include
-# it as an override file. The key requirement is mounting the
-# Docker socket so the service can query the Docker daemon.
+# Drop this service definition into your existing docker-compose.yml
+# or use it as an override file.
+#
+# Requirements:
+#   - Mount the Docker socket so the service can query the Docker daemon.
+#   - Set REDIS_HOST to the service name of your Redis container.
+#
+# First-time setup:
+#   docker network create internal   (if it doesn't already exist)
 # ============================================================
 
 version: "3.9"
@@ -18,18 +24,42 @@ services:
     ports:
       - "8000:8000"         # expose on host; remove if only internal access is needed
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only is sufficient for most operations
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # :ro allows read-only introspection + container start/stop/remove via the Docker API.
+      # The API itself enforces all access control — the socket does not need :rw.
     environment:
       - PYTHONUNBUFFERED=1
+      # ---- CORS (comma-separated list of allowed UI origins) ----
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      # ---- API key authentication (off by default) ----
+      # - API_KEY_ENABLED=true
+      # - API_KEY=change-me-to-a-strong-secret
+      # ---- Redis connection ----
+      - REDIS_HOST=redis          # service name of your Redis container
+      - REDIS_PORT=6379
+      # - REDIS_PASSWORD=secret   # uncomment if your Redis requires auth
+      # - REDIS_DB=0              # default database index (0–15)
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
     networks:
       - internal            # join your existing internal network
 
 # ---------------------------------------------------------------------------
-# If you need the service to be able to START/STOP/REMOVE containers,
-# change :ro to :rw above. Read-only is enough for listing and log access.
-# ---------------------------------------------------------------------------
-
 # Reference your existing network here instead of creating a new one:
+# ---------------------------------------------------------------------------
 networks:
   internal:
     external: true          # set to false if you want this file to create it

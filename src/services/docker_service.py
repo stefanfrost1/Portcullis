@@ -5,13 +5,18 @@ All methods return plain dicts or primitives so that routers can
 serialize them with Pydantic without touching the SDK objects directly.
 """
 
+import logging
 import re
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from typing import Generator, Optional
 
 import docker
 from docker.errors import DockerException, NotFound, APIError
 from docker.models.containers import Container
+
+logger = logging.getLogger(__name__)
 
 from src.models.schemas import (
     ContainerDetail,
@@ -31,9 +36,26 @@ from src.models.schemas import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+_client: docker.DockerClient | None = None
+
+
 def _docker_client() -> docker.DockerClient:
-    """Return a connected Docker client (socket-based inside the container)."""
-    return docker.from_env()
+    """Return a cached Docker client (lazy-initialised singleton)."""
+    global _client
+    if _client is None:
+        _client = docker.from_env()
+    return _client
+
+
+def close_docker_client() -> None:
+    """Close the Docker client connection. Called from the app lifespan shutdown."""
+    global _client
+    if _client is not None:
+        try:
+            _client.close()
+        except Exception:
+            pass
+        _client = None
 
 
 def _parse_iso(ts: Optional[str]) -> Optional[str]:
@@ -82,14 +104,30 @@ def _container_summary(c: Container) -> dict:
     }
 
 
+_SENSITIVE_ENV = re.compile(
+    r"(password|secret|token|key|cert|auth|credential|api_key|apikey|passwd|private)",
+    re.IGNORECASE,
+)
+
+
+def _mask_env(env_list: list[str]) -> list[str]:
+    """Replace values of sensitive environment variables with '***'."""
+    result = []
+    for entry in env_list:
+        name, _, _ = entry.partition("=")
+        result.append(f"{name}=***" if _SENSITIVE_ENV.search(name) else entry)
+    return result
+
+
 def _container_detail(c: Container) -> dict:
     base = _container_summary(c)
     attrs = c.attrs
+    raw_env = attrs.get("Config", {}).get("Env") or []
     base.update(
         {
             "image_id": attrs.get("Image", ""),
             "command": " ".join(attrs.get("Config", {}).get("Cmd") or []),
-            "env": attrs.get("Config", {}).get("Env") or [],
+            "env": _mask_env(raw_env),
             "mounts": attrs.get("Mounts") or [],
             "network_settings": attrs.get("NetworkSettings") or {},
             "host_config": attrs.get("HostConfig") or {},
@@ -248,6 +286,11 @@ def get_logs(
     return lines
 
 
+_MAX_PATTERN_LENGTH = 500
+_MAX_SEARCH_TAIL = 10_000
+_SEARCH_TIMEOUT_SECONDS = 5.0
+
+
 def search_logs(
     container_id: str,
     pattern: str,
@@ -258,6 +301,13 @@ def search_logs(
     timestamps: bool = False,
     case_insensitive: bool = False,
 ) -> dict:
+    # Guard: pattern length cap (ReDoS mitigation)
+    if len(pattern) > _MAX_PATTERN_LENGTH:
+        raise ValueError(f"Regex pattern too long (max {_MAX_PATTERN_LENGTH} characters)")
+
+    # Guard: tail cap
+    tail = min(tail, _MAX_SEARCH_TAIL)
+
     lines = get_logs(
         container_id,
         tail=tail,
@@ -272,7 +322,21 @@ def search_logs(
     except re.error as exc:
         raise ValueError(f"Invalid regex pattern: {exc}") from exc
 
-    matched = [line for line in lines if regex.search(line)]
+    # Execute search in a thread with a timeout to prevent ReDoS hangs
+    def _do_search() -> list[str]:
+        return [line for line in lines if regex.search(line)]
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_do_search)
+        try:
+            matched = future.result(timeout=_SEARCH_TIMEOUT_SECONDS)
+        except FutureTimeoutError:
+            future.cancel()
+            raise ValueError(
+                f"Pattern search timed out after {_SEARCH_TIMEOUT_SECONDS}s — "
+                "simplify the regex or reduce tail size"
+            )
+
     truncated = len(matched) > max_results
     return {
         "container_id": container_id,
@@ -469,6 +533,138 @@ def get_disk_usage() -> dict:
         "containers": df.get("Containers") or [],
         "volumes": df.get("Volumes") or [],
         "build_cache": df.get("BuildCache") or [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch container stats
+# ---------------------------------------------------------------------------
+
+def get_all_container_stats(
+    timeout_seconds: float = 5.0,
+    max_workers: int = 20,
+) -> dict:
+    """
+    Fetch resource stats for ALL running containers in parallel.
+
+    Returns {containers: [...], count: N, errors: [...]}.
+    Containers that time out or raise are included in `errors` rather than
+    raising, so a single unhealthy container does not abort the whole call.
+    """
+    client = _docker_client()
+    running = client.containers.list(all=False)
+
+    stats_list: list[dict] = []
+    errors: list[dict] = []
+
+    def _fetch(c) -> dict:
+        return get_container_stats(c.id)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_fetch, c): c for c in running}
+        for future in as_completed(futures, timeout=timeout_seconds + 5):
+            c = futures[future]
+            try:
+                result = future.result(timeout=timeout_seconds)
+                stats_list.append(result)
+            except FutureTimeoutError:
+                errors.append({"container_id": c.id, "name": c.name.lstrip("/"), "error": "stats timeout"})
+            except Exception as exc:
+                errors.append({"container_id": c.id, "name": c.name.lstrip("/"), "error": str(exc)})
+
+    return {"containers": stats_list, "count": len(stats_list), "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Compose project grouping
+# ---------------------------------------------------------------------------
+
+def get_compose_groups() -> list[dict]:
+    """
+    Group all containers (running + stopped) by com.docker.compose.project label.
+    Containers without that label are omitted.
+    Returns list sorted by project name.
+    """
+    client = _docker_client()
+    all_containers = client.containers.list(all=True)
+
+    groups: dict[str, dict] = {}
+    for c in all_containers:
+        s = _container_summary(c)
+        project = s.get("compose_project")
+        if not project:
+            continue
+        if project not in groups:
+            groups[project] = {
+                "project": project,
+                "total": 0, "running": 0, "paused": 0, "stopped": 0,
+                "services": [],
+            }
+        groups[project]["total"] += 1
+        state = s.get("state", "")
+        if state == "running":
+            groups[project]["running"] += 1
+        elif state == "paused":
+            groups[project]["paused"] += 1
+        else:
+            groups[project]["stopped"] += 1
+        groups[project]["services"].append({
+            "name": s.get("compose_service"),
+            "container_name": s["name"],
+            "short_id": s["short_id"],
+            "state": state,
+            "uptime_seconds": s.get("uptime_seconds"),
+            "image": s.get("image"),
+        })
+
+    return sorted(groups.values(), key=lambda g: g["project"])
+
+
+# ---------------------------------------------------------------------------
+# Docker overview snapshot  (for /api/v1/overview)
+# ---------------------------------------------------------------------------
+
+def get_docker_overview() -> dict:
+    """
+    Minimal Docker snapshot for the overview endpoint.
+    Makes two Docker API calls: info() and df().
+    """
+    client = _docker_client()
+    info = client.info()
+    df = client.df()
+
+    images_list = df.get("Images") or []
+    total_image_bytes = sum(img.get("Size", 0) for img in images_list)
+    reclaimable_image_bytes = sum(
+        img.get("Size", 0) for img in images_list
+        if not img.get("Containers")
+    )
+
+    volumes_list = df.get("Volumes") or []
+    total_volume_bytes = sum(
+        (v.get("UsageData") or {}).get("Size", 0) for v in volumes_list
+    )
+
+    compose_projects = get_compose_groups()
+
+    return {
+        "containers": {
+            "running": info.get("ContainersRunning", 0),
+            "paused": info.get("ContainersPaused", 0),
+            "stopped": info.get("ContainersStopped", 0),
+            "total": info.get("Containers", 0),
+        },
+        "images": {
+            "count": info.get("Images", 0),
+            "total_bytes": total_image_bytes,
+            "reclaimable_bytes": reclaimable_image_bytes,
+        },
+        "volumes": {
+            "count": len(volumes_list),
+            "total_bytes": total_volume_bytes,
+        },
+        "compose_project_count": len(compose_projects),
+        "compose_projects": compose_projects,
     }
 
 
