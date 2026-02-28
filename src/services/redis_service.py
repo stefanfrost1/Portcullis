@@ -15,10 +15,11 @@ import base64
 import os
 import queue
 import threading
+import time
 from typing import Any, Generator, Optional
 
 import redis
-from redis.exceptions import RedisError
+from redis.exceptions import RedisError, ResponseError
 
 # ---------------------------------------------------------------------------
 # Connection pools — one per (decoded | binary) × db index
@@ -951,3 +952,445 @@ def make_thread_queue(
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return q, stop
+
+
+# ---------------------------------------------------------------------------
+# PaaS / version compatibility helper
+# ---------------------------------------------------------------------------
+
+def _unsupported(reason: str) -> dict:
+    """Return a structured 'not supported' dict for disabled admin commands."""
+    return {"supported": False, "detail": reason}
+
+
+def _is_unsupported_error(exc: ResponseError) -> bool:
+    msg = str(exc).lower()
+    return any(kw in msg for kw in (
+        "unknown command", "not supported", "this instance",
+        "err command not allowed", "err unknown",
+    ))
+
+
+# ---------------------------------------------------------------------------
+# Redis overview snapshot  (for /api/v1/overview)
+# ---------------------------------------------------------------------------
+
+def get_redis_overview(db: int = 0) -> dict:
+    """
+    Minimal Redis snapshot for the overview endpoint.
+    Uses a single INFO all call. Returns {"status": "error", ...} on failure
+    so the overview endpoint can still respond when Redis is unreachable.
+    """
+    try:
+        r = get_client(db)
+        info = r.info()          # all sections
+        keyspace = r.info("keyspace")
+
+        total_keys = sum(v.get("keys", 0) for v in keyspace.values() if isinstance(v, dict))
+        hits = info.get("keyspace_hits", 0)
+        misses = info.get("keyspace_misses", 0)
+        total = hits + misses
+        hit_rate = round(hits / total * 100, 2) if total > 0 else None
+
+        used = info.get("used_memory", 0)
+        max_mem = info.get("maxmemory", 0)
+
+        return {
+            "status": "ok",
+            "version": info.get("redis_version"),
+            "uptime_seconds": info.get("uptime_in_seconds"),
+            "connected_clients": info.get("connected_clients"),
+            "used_memory_bytes": used,
+            "max_memory_bytes": max_mem if max_mem else None,
+            "memory_percent_used": round(used / max_mem * 100, 2) if max_mem else None,
+            "total_keys": total_keys,
+            "ops_per_sec": info.get("instantaneous_ops_per_sec"),
+            "hit_rate": hit_rate,
+            "evicted_keys": info.get("evicted_keys", 0),
+            "role": info.get("role"),
+            "connected_slaves": info.get("connected_slaves", 0),
+            "aof_enabled": info.get("aof_enabled", 0) == 1,
+        }
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
+# Redis structured summary dashboard
+# ---------------------------------------------------------------------------
+
+def get_summary(db: int = 0) -> dict:
+    """
+    Parse INFO all into a clean structured summary.
+    Single Redis round-trip. Compatible with Redis 6.0+.
+    """
+    r = get_client(db)
+    info = r.info()   # returns all sections merged into one dict
+
+    # Memory
+    used = info.get("used_memory", 0)
+    max_mem = info.get("maxmemory", 0)
+    mem_percent = round(used / max_mem * 100, 2) if max_mem else None
+
+    # Hit rate
+    hits = info.get("keyspace_hits", 0)
+    misses = info.get("keyspace_misses", 0)
+    total_ops = hits + misses
+    hit_rate = round(hits / total_ops * 100, 2) if total_ops else None
+
+    # Per-db key counts (from keyspace section embedded in info)
+    uptime = info.get("uptime_in_seconds", 1) or 1
+    total_keys = 0
+    per_db = []
+    for k, v in info.items():
+        if k.startswith("db") and isinstance(v, dict):
+            db_num = int(k[2:])
+            keys = v.get("keys", 0)
+            total_keys += keys
+            per_db.append({
+                "db": db_num,
+                "keys": keys,
+                "expires": v.get("expires", 0),
+                "avg_ttl_ms": v.get("avg_ttl", 0),
+            })
+    per_db.sort(key=lambda x: x["db"])
+
+    # Replication
+    role = info.get("role", "unknown")
+    connected_slaves = info.get("connected_slaves", 0)
+
+    # Persistence
+    aof_enabled = info.get("aof_enabled", 0) == 1
+    last_bgsave_status = info.get("rdb_last_bgsave_status", "unknown")
+
+    return {
+        "server": {
+            "redis_version": info.get("redis_version"),
+            "uptime_seconds": info.get("uptime_in_seconds"),
+            "hz": info.get("hz"),
+            "config_file": info.get("config_file") or None,
+            "os": info.get("os"),
+            "mode": info.get("redis_mode", "standalone"),
+        },
+        "clients": {
+            "connected": info.get("connected_clients"),
+            "blocked": info.get("blocked_clients", 0),
+            "tracking": info.get("tracking_clients", 0),
+            "max_clients": info.get("maxclients"),
+        },
+        "memory": {
+            "used_bytes": used,
+            "used_human": info.get("used_memory_human"),
+            "max_bytes": max_mem if max_mem else None,
+            "max_human": info.get("maxmemory_human"),
+            "percent_used": mem_percent,
+            "peak_used_bytes": info.get("used_memory_peak"),
+            "rss_bytes": info.get("used_memory_rss"),
+            "fragmentation_ratio": info.get("mem_fragmentation_ratio"),
+            "eviction_policy": info.get("maxmemory_policy"),
+        },
+        "performance": {
+            "ops_per_sec": info.get("instantaneous_ops_per_sec"),
+            "hit_rate": hit_rate,
+            "evicted_keys": info.get("evicted_keys", 0),
+            "evicted_keys_per_sec": round(info.get("evicted_keys", 0) / uptime, 4),
+            "expired_keys": info.get("expired_keys", 0),
+            "expired_keys_per_sec": round(info.get("expired_keys", 0) / uptime, 4),
+            "total_commands_processed": info.get("total_commands_processed"),
+            "total_net_input_bytes": info.get("total_net_input_bytes"),
+            "total_net_output_bytes": info.get("total_net_output_bytes"),
+        },
+        "keyspace": {
+            "total_keys": total_keys,
+            "databases": per_db,
+        },
+        "replication": {
+            "role": role,
+            "connected_slaves": connected_slaves,
+            "master_repl_offset": info.get("master_repl_offset"),
+            "repl_backlog_size": info.get("repl_backlog_size"),
+        },
+        "persistence": {
+            "rdb_enabled": True,
+            "aof_enabled": aof_enabled,
+            "last_save_timestamp": info.get("rdb_last_save_time"),
+            "last_save_ok": last_bgsave_status == "ok",
+            "rdb_changes_since_last_save": info.get("rdb_changes_since_last_save"),
+            "aof_last_rewrite_status": info.get("aof_last_rewrite_status"),
+            "aof_rewrite_in_progress": info.get("aof_rewrite_in_progress", 0) == 1,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Replication detail
+# ---------------------------------------------------------------------------
+
+def get_replication(db: int = 0) -> dict:
+    """
+    Parse INFO replication into a clean structured dict.
+    Handles both redis-py dict format and raw string format for slaveN fields.
+    Compatible with Redis 6.0+ and managed PaaS (standalone or replica).
+    """
+    r = get_client(db)
+    info = r.info("replication")
+
+    replicas = []
+    i = 0
+    while f"slave{i}" in info:
+        raw = info[f"slave{i}"]
+        if isinstance(raw, dict):
+            replica = raw
+        else:
+            # Raw format: "ip=x,port=y,state=online,offset=N,lag=N"
+            replica = {}
+            for part in str(raw).split(","):
+                if "=" in part:
+                    k, _, v = part.partition("=")
+                    replica[k.strip()] = v.strip()
+        replicas.append({
+            "id": i,
+            "ip": replica.get("ip"),
+            "port": replica.get("port"),
+            "state": replica.get("state"),
+            "offset": int(replica.get("offset", 0)),
+            "lag_seconds": int(replica.get("lag", 0)),
+        })
+        i += 1
+
+    result: dict = {
+        "role": info.get("role"),
+        "connected_slaves": info.get("connected_slaves", 0),
+        "master_replid": info.get("master_replid"),
+        "master_repl_offset": info.get("master_repl_offset"),
+        "repl_backlog_active": info.get("repl_backlog_active", 0) == 1,
+        "repl_backlog_size": info.get("repl_backlog_size"),
+        "replicas": replicas,
+    }
+
+    # Include slave/replica info when this node is a replica
+    if info.get("role") in ("slave", "replica"):
+        result.update({
+            "master_host": info.get("master_host"),
+            "master_port": info.get("master_port"),
+            "master_link_status": info.get("master_link_status"),
+            "master_last_io_seconds_ago": info.get("master_last_io_seconds_ago"),
+            "master_sync_in_progress": info.get("master_sync_in_progress", 0) == 1,
+            "slave_repl_offset": info.get("slave_repl_offset"),
+            "slave_priority": info.get("slave_priority"),
+            "slave_read_only": info.get("slave_read_only", 0) == 1,
+        })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Performance metrics
+# ---------------------------------------------------------------------------
+
+def get_performance(db: int = 0) -> dict:
+    """
+    Parse INFO stats + INFO clients into a performance snapshot.
+    Uses a single INFO all call internally.
+    """
+    r = get_client(db)
+    info = r.info()   # all sections
+
+    hits = info.get("keyspace_hits", 0)
+    misses = info.get("keyspace_misses", 0)
+    total = hits + misses
+    hit_rate = round(hits / total * 100, 4) if total else None
+    miss_rate = round(misses / total * 100, 4) if total else None
+
+    uptime = info.get("uptime_in_seconds", 1) or 1
+
+    return {
+        "ops_per_sec": info.get("instantaneous_ops_per_sec"),
+        "hit_rate_percent": hit_rate,
+        "miss_rate_percent": miss_rate,
+        "keyspace_hits": hits,
+        "keyspace_misses": misses,
+        "total_commands_processed": info.get("total_commands_processed"),
+        "total_connections_received": info.get("total_connections_received"),
+        "evicted_keys": info.get("evicted_keys", 0),
+        "evicted_keys_per_sec": round(info.get("evicted_keys", 0) / uptime, 4),
+        "expired_keys": info.get("expired_keys", 0),
+        "expired_keys_per_sec": round(info.get("expired_keys", 0) / uptime, 4),
+        "rejected_connections": info.get("rejected_connections", 0),
+        "total_net_input_bytes": info.get("total_net_input_bytes"),
+        "total_net_output_bytes": info.get("total_net_output_bytes"),
+        "net_input_bytes_per_sec": round(info.get("total_net_input_bytes", 0) / uptime, 0),
+        "net_output_bytes_per_sec": round(info.get("total_net_output_bytes", 0) / uptime, 0),
+        "connected_clients": info.get("connected_clients"),
+        "blocked_clients": info.get("blocked_clients", 0),
+        "tracking_clients": info.get("tracking_clients", 0),
+        "uptime_seconds": info.get("uptime_in_seconds"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Queue monitoring  (Lists + Streams used as queues)
+# ---------------------------------------------------------------------------
+
+def get_queues(
+    pattern: str = "*",
+    max_keys: int = 500,
+    db: int = 0,
+) -> list[dict]:
+    """
+    Scan the keyspace for list and stream keys.
+    Returns one entry per queue key, sorted by depth descending.
+
+    For streams: also fetches XINFO GROUPS summary.
+    Compatible with Redis 6.0+ — does NOT use SCAN TYPE filter to avoid
+    potential PaaS restrictions; instead filters via a pipeline TYPE call.
+
+    The `lag` field in consumer groups requires Redis 7.0+; on 6.x it is None.
+    """
+    r = get_client(db)
+    queue_keys: list[tuple[str, str]] = []   # (key, type)
+    cursor = 0
+
+    while len(queue_keys) < max_keys:
+        cursor, keys = r.scan(cursor=cursor, match=pattern, count=500)
+        if keys:
+            pipe = r.pipeline(transaction=False)
+            for k in keys:
+                pipe.type(k)
+            types = pipe.execute(raise_on_error=False)
+            for k, t in zip(keys, types):
+                if isinstance(t, str) and t in ("list", "stream"):
+                    queue_keys.append((k, t))
+                    if len(queue_keys) >= max_keys:
+                        break
+        if cursor == 0:
+            break
+
+    if not queue_keys:
+        return []
+
+    # Fetch depths in a single pipeline
+    pipe = r.pipeline(transaction=False)
+    for key, ktype in queue_keys:
+        if ktype == "list":
+            pipe.llen(key)
+        else:
+            pipe.xlen(key)
+    depths = pipe.execute(raise_on_error=False)
+
+    result = []
+    for (key, ktype), depth in zip(queue_keys, depths):
+        entry: dict = {
+            "key": key,
+            "type": ktype,
+            "depth": depth if isinstance(depth, int) else 0,
+            "consumer_groups": None,
+        }
+        if ktype == "stream":
+            try:
+                groups_raw = r.xinfo_groups(key)
+                entry["consumer_groups"] = [
+                    {
+                        "name": g.get("name"),
+                        "consumers": g.get("consumers", 0),
+                        "pending": g.get("pending", 0),
+                        "last_delivered_id": g.get("last-delivered-id"),
+                        "lag": g.get("lag"),   # Redis 7.0+ only; None on 6.x
+                    }
+                    for g in groups_raw
+                ]
+            except Exception:
+                entry["consumer_groups"] = []
+        result.append(entry)
+
+    result.sort(key=lambda x: x["depth"], reverse=True)
+    return result
+
+
+def get_queue_detail(key: str, sample_count: int = 10, db: int = 0) -> dict:
+    """
+    Deep-dive into a single list or stream queue key.
+
+    List: depth + oldest `sample_count` items (LRANGE 0 N-1).
+    Stream: depth + XINFO GROUPS + XPENDING summary per group + oldest pending age.
+
+    `lag` in consumer groups requires Redis 7.0+; None on 6.x.
+    XPENDING summary form works on Redis 5.0+.
+    """
+    r = get_client(db)
+    ktype = r.type(key)
+
+    if ktype == "none":
+        raise KeyError(f"Key '{key}' does not exist")
+    if ktype not in ("list", "stream"):
+        raise KeyError(f"Key '{key}' is type '{ktype}', not a queue (list or stream)")
+
+    if ktype == "list":
+        depth = r.llen(key)
+        oldest = r.lrange(key, 0, sample_count - 1)
+        return {
+            "key": key, "type": "list", "depth": depth,
+            "sample_oldest": oldest,
+            "consumer_groups": None, "pending_summary": None,
+            "oldest_pending_age_seconds": None,
+        }
+
+    # Stream
+    depth = r.xlen(key)
+    try:
+        groups_raw = r.xinfo_groups(key)
+    except Exception:
+        groups_raw = []
+
+    consumer_groups = []
+    pending_summary = []
+    oldest_pending_age_seconds = None
+
+    for g in groups_raw:
+        group_name = g.get("name")
+        consumer_groups.append({
+            "name": group_name,
+            "consumers": g.get("consumers", 0),
+            "pending": g.get("pending", 0),
+            "last_delivered_id": g.get("last-delivered-id"),
+            "lag": g.get("lag"),   # None on Redis 6.x
+        })
+        try:
+            # XPENDING <key> <group>  — summary form (Redis 5.0+)
+            pending_info = r.xpending(key, group_name)
+            if pending_info and pending_info.get("pending", 0) > 0:
+                min_id = pending_info.get("min", "")
+                max_id = pending_info.get("max", "")
+                consumers_raw = pending_info.get("consumers") or []
+                consumers_pending = [
+                    {"name": c.get("name"), "pending_count": c.get("pending", 0)}
+                    for c in consumers_raw
+                ] if isinstance(consumers_raw, list) else []
+
+                pending_summary.append({
+                    "group": group_name,
+                    "total_pending": pending_info.get("pending", 0),
+                    "min_pending_id": min_id,
+                    "max_pending_id": max_id,
+                    "consumers": consumers_pending,
+                })
+
+                # Age of oldest pending message from stream ID timestamp (ms prefix)
+                if min_id and "-" in str(min_id):
+                    try:
+                        msg_ts_ms = int(str(min_id).split("-")[0])
+                        age_sec = round(time.time() - msg_ts_ms / 1000, 1)
+                        if oldest_pending_age_seconds is None or age_sec > oldest_pending_age_seconds:
+                            oldest_pending_age_seconds = age_sec
+                    except (ValueError, IndexError):
+                        pass
+        except Exception:
+            pass
+
+    return {
+        "key": key, "type": "stream", "depth": depth,
+        "sample_oldest": None,
+        "consumer_groups": consumer_groups,
+        "pending_summary": pending_summary if pending_summary else None,
+        "oldest_pending_age_seconds": oldest_pending_age_seconds,
+    }

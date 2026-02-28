@@ -6,6 +6,8 @@ serialize them with Pydantic without touching the SDK objects directly.
 """
 
 import re
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from typing import Generator, Optional
 
@@ -469,6 +471,138 @@ def get_disk_usage() -> dict:
         "containers": df.get("Containers") or [],
         "volumes": df.get("Volumes") or [],
         "build_cache": df.get("BuildCache") or [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Batch container stats
+# ---------------------------------------------------------------------------
+
+def get_all_container_stats(
+    timeout_seconds: float = 5.0,
+    max_workers: int = 20,
+) -> dict:
+    """
+    Fetch resource stats for ALL running containers in parallel.
+
+    Returns {containers: [...], count: N, errors: [...]}.
+    Containers that time out or raise are included in `errors` rather than
+    raising, so a single unhealthy container does not abort the whole call.
+    """
+    client = _docker_client()
+    running = client.containers.list(all=False)
+
+    stats_list: list[dict] = []
+    errors: list[dict] = []
+
+    def _fetch(c) -> dict:
+        return get_container_stats(c.id)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_fetch, c): c for c in running}
+        for future in as_completed(futures, timeout=timeout_seconds + 5):
+            c = futures[future]
+            try:
+                result = future.result(timeout=timeout_seconds)
+                stats_list.append(result)
+            except FutureTimeoutError:
+                errors.append({"container_id": c.id, "name": c.name.lstrip("/"), "error": "stats timeout"})
+            except Exception as exc:
+                errors.append({"container_id": c.id, "name": c.name.lstrip("/"), "error": str(exc)})
+
+    return {"containers": stats_list, "count": len(stats_list), "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Compose project grouping
+# ---------------------------------------------------------------------------
+
+def get_compose_groups() -> list[dict]:
+    """
+    Group all containers (running + stopped) by com.docker.compose.project label.
+    Containers without that label are omitted.
+    Returns list sorted by project name.
+    """
+    client = _docker_client()
+    all_containers = client.containers.list(all=True)
+
+    groups: dict[str, dict] = {}
+    for c in all_containers:
+        s = _container_summary(c)
+        project = s.get("compose_project")
+        if not project:
+            continue
+        if project not in groups:
+            groups[project] = {
+                "project": project,
+                "total": 0, "running": 0, "paused": 0, "stopped": 0,
+                "services": [],
+            }
+        groups[project]["total"] += 1
+        state = s.get("state", "")
+        if state == "running":
+            groups[project]["running"] += 1
+        elif state == "paused":
+            groups[project]["paused"] += 1
+        else:
+            groups[project]["stopped"] += 1
+        groups[project]["services"].append({
+            "name": s.get("compose_service"),
+            "container_name": s["name"],
+            "short_id": s["short_id"],
+            "state": state,
+            "uptime_seconds": s.get("uptime_seconds"),
+            "image": s.get("image"),
+        })
+
+    return sorted(groups.values(), key=lambda g: g["project"])
+
+
+# ---------------------------------------------------------------------------
+# Docker overview snapshot  (for /api/v1/overview)
+# ---------------------------------------------------------------------------
+
+def get_docker_overview() -> dict:
+    """
+    Minimal Docker snapshot for the overview endpoint.
+    Makes two Docker API calls: info() and df().
+    """
+    client = _docker_client()
+    info = client.info()
+    df = client.df()
+
+    images_list = df.get("Images") or []
+    total_image_bytes = sum(img.get("Size", 0) for img in images_list)
+    reclaimable_image_bytes = sum(
+        img.get("Size", 0) for img in images_list
+        if not img.get("Containers")
+    )
+
+    volumes_list = df.get("Volumes") or []
+    total_volume_bytes = sum(
+        (v.get("UsageData") or {}).get("Size", 0) for v in volumes_list
+    )
+
+    compose_projects = get_compose_groups()
+
+    return {
+        "containers": {
+            "running": info.get("ContainersRunning", 0),
+            "paused": info.get("ContainersPaused", 0),
+            "stopped": info.get("ContainersStopped", 0),
+            "total": info.get("Containers", 0),
+        },
+        "images": {
+            "count": info.get("Images", 0),
+            "total_bytes": total_image_bytes,
+            "reclaimable_bytes": reclaimable_image_bytes,
+        },
+        "volumes": {
+            "count": len(volumes_list),
+            "total_bytes": total_volume_bytes,
+        },
+        "compose_project_count": len(compose_projects),
+        "compose_projects": compose_projects,
     }
 
 

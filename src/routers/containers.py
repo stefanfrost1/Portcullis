@@ -47,6 +47,52 @@ def list_containers(
 
 
 # ---------------------------------------------------------------------------
+# Batch stats  (must be declared before /{container_id} to avoid ambiguity)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/stats/all",
+    summary="Resource stats for ALL running containers (parallel fetch)",
+    description=(
+        "Fetches CPU %, memory, network I/O, and block I/O for every running "
+        "container in parallel using a thread pool. "
+        "Containers that fail or exceed the per-container timeout appear in "
+        "the `errors` list rather than crashing the whole call."
+    ),
+    response_model=APIResponse,
+)
+def all_container_stats(
+    timeout: float = Query(5.0, ge=1.0, le=30.0, description="Per-container fetch timeout in seconds"),
+    max_workers: int = Query(20, ge=1, le=50),
+):
+    try:
+        return APIResponse(data=ds.get_all_container_stats(timeout_seconds=timeout, max_workers=max_workers))
+    except APIError as exc:
+        raise _docker_error(exc)
+
+
+# ---------------------------------------------------------------------------
+# Compose project groups
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/groups",
+    summary="Containers grouped by Compose project",
+    description=(
+        "Groups all containers (running and stopped) by the "
+        "`com.docker.compose.project` label. Returns per-project counts "
+        "and a list of services. Containers without a compose label are excluded."
+    ),
+    response_model=APIResponse,
+)
+def compose_groups():
+    try:
+        return APIResponse(data=ds.get_compose_groups())
+    except APIError as exc:
+        raise _docker_error(exc)
+
+
+# ---------------------------------------------------------------------------
 # Inspect
 # ---------------------------------------------------------------------------
 

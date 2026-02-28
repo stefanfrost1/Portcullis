@@ -112,6 +112,60 @@ def dbsize(db: int = Query(0, ge=0, le=15)):
 
 
 # ===========================================================================
+# Dashboard — aggregate snapshots for monitoring UIs
+# ===========================================================================
+
+@router.get(
+    "/summary",
+    summary="Redis dashboard summary — server, clients, memory, performance, keyspace, replication",
+    description=(
+        "Parses `INFO all` once and returns structured sub-sections. "
+        "PaaS-safe: fields that require restricted commands are omitted gracefully. "
+        "`lag` in replication replica info is `null` on Redis < 7.0."
+    ),
+    response_model=APIResponse,
+)
+def redis_summary(db: int = Query(0, ge=0, le=15)):
+    try:
+        return APIResponse(data=rs.get_summary(db))
+    except RedisError as exc:
+        raise _err(exc)
+
+
+@router.get(
+    "/replication",
+    summary="Redis replication status — role, replicas, offsets, lag",
+    description=(
+        "Returns `INFO replication` parsed into a structured dict. "
+        "Includes replica list with `offset` and `lag` (null on Redis < 7.0). "
+        "Works on standalone, replica, and sentinel-managed instances."
+    ),
+    response_model=APIResponse,
+)
+def redis_replication(db: int = Query(0, ge=0, le=15)):
+    try:
+        return APIResponse(data=rs.get_replication(db))
+    except RedisError as exc:
+        raise _err(exc)
+
+
+@router.get(
+    "/performance",
+    summary="Redis performance metrics — ops/sec, hit rate, eviction, I/O bytes",
+    description=(
+        "Derived from `INFO all`: instantaneous ops/sec, keyspace hit/miss rates, "
+        "evicted and expired key counts, and network I/O bytes/sec."
+    ),
+    response_model=APIResponse,
+)
+def redis_performance(db: int = Query(0, ge=0, le=15)):
+    try:
+        return APIResponse(data=rs.get_performance(db))
+    except RedisError as exc:
+        raise _err(exc)
+
+
+# ===========================================================================
 # Config
 # ===========================================================================
 

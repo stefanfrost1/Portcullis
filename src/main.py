@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.routers import containers, logs, images, networks, volumes, system
-from src.routers import redis_keys, redis_server
+from src.routers import redis_keys, redis_server, redis_queues, overview
 
 API_PREFIX = "/api/v1"
 
@@ -25,9 +25,11 @@ app = FastAPI(
         "Shields the UI from direct Docker socket and Redis access. "
         "Exposes container management, log streaming, image/network/volume ops, "
         "and a full Redis operations API (key browser, server info, pub/sub, "
-        "MONITOR stream, keyspace analysis, slow log, memory stats, and more)."
+        "MONITOR stream, keyspace analysis, slow log, memory stats, and more). "
+        "Includes a single-call `/overview` endpoint for monitoring dashboards "
+        "and queue-depth monitoring for List and Stream keys."
     ),
-    version="2.0.0",
+    version="3.0.0",
     docs_url=f"{API_PREFIX}/docs",
     redoc_url=f"{API_PREFIX}/redoc",
     openapi_url=f"{API_PREFIX}/openapi.json",
@@ -69,8 +71,12 @@ app.include_router(volumes.router, prefix=API_PREFIX)
 app.include_router(system.router, prefix=API_PREFIX)
 
 # Redis routers — /api/v1/redis/…
-app.include_router(redis_keys.router, prefix=API_PREFIX)   # key browser + type operations
-app.include_router(redis_server.router, prefix=API_PREFIX) # server ops, monitoring, analysis
+app.include_router(redis_keys.router, prefix=API_PREFIX)    # key browser + type operations
+app.include_router(redis_server.router, prefix=API_PREFIX)  # server ops, monitoring, analysis
+app.include_router(redis_queues.router, prefix=API_PREFIX)  # queue depth monitoring
+
+# Aggregate overview — /api/v1/overview
+app.include_router(overview.router, prefix=API_PREFIX)
 
 
 # ---------------------------------------------------------------------------
