@@ -9,23 +9,19 @@ Log endpoints:
 
 import asyncio
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
-from docker.errors import NotFound, APIError
+from docker.errors import NotFound, APIError, DockerException
 
 from src.models.schemas import APIResponse
+from src.routers._docker_errors import handle_docker_exc
 from src.services import docker_service as ds
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/containers", tags=["Logs"])
-
-
-def _not_found(container_id: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Container '{container_id}' not found",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -58,10 +54,8 @@ def get_logs(
             timestamps=timestamps,
         )
         return APIResponse(data={"container_id": container_id, "lines": lines, "count": len(lines)})
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 # ---------------------------------------------------------------------------
@@ -102,10 +96,8 @@ def search_logs(
         return APIResponse(data=result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +137,13 @@ async def stream_logs_ws(
                 return None
 
         while True:
-            line = await loop.run_in_executor(None, next_line)
+            try:
+                line = await asyncio.wait_for(
+                    loop.run_in_executor(None, next_line), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                await websocket.send_text(json.dumps({"event": "heartbeat"}))
+                continue
             if line is None:
                 await websocket.send_text(json.dumps({"event": "done"}))
                 break
@@ -153,10 +151,12 @@ async def stream_logs_ws(
                 await websocket.send_text(json.dumps({"line": line}))
     except WebSocketDisconnect:
         pass
-    except NotFound:
-        await websocket.send_text(
-            json.dumps({"event": "error", "detail": f"Container '{container_id}' not found"})
-        )
+    except DockerException as exc:
+        err_http = handle_docker_exc(exc, container_id)
+        try:
+            await websocket.send_text(json.dumps({"event": "error", "detail": err_http.detail}))
+        except Exception:
+            pass
         await websocket.close()
     except Exception as exc:
         try:

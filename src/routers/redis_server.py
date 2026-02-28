@@ -59,7 +59,14 @@ from src.models.redis_schemas import (
 from src.models.schemas import APIResponse
 from src.services import redis_service as rs
 
+import logging
+
 router = APIRouter(prefix="/redis", tags=["Redis — Server"])
+
+logger = logging.getLogger(__name__)
+
+# Active MONITOR sessions — limit one per db to prevent Redis throughput degradation
+_active_monitors: set[int] = set()
 
 
 def _err(exc: Exception) -> HTTPException:
@@ -488,12 +495,21 @@ async def pubsub_subscribe_ws(
         loop = asyncio.get_event_loop()
 
         while True:
-            item = await loop.run_in_executor(None, q.get)
+            try:
+                item = await asyncio.wait_for(
+                    loop.run_in_executor(None, q.get), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                await websocket.send_text(json.dumps({"event": "heartbeat"}))
+                continue
             if item is None:
                 break
             if "__error__" in item:
                 await websocket.send_text(json.dumps({"event": "error", "detail": item["__error__"]}))
                 break
+            if "__warning__" in item:
+                await websocket.send_text(json.dumps({"event": "warning", "detail": item["__warning__"]}))
+                continue
             await websocket.send_text(json.dumps(item, default=str))
     except WebSocketDisconnect:
         pass
@@ -523,28 +539,51 @@ async def monitor_ws(
     WebSocket: stream every command processed by Redis (MONITOR).
 
     ⚠  This degrades Redis throughput by ~50% — use only for debugging.
+    ⚠  Only one MONITOR session is allowed per database at a time.
     Connect: ws://<host>/api/v1/redis/monitor
 
     Each message:
         {"time": 1700000000.123, "db": 0, "client_address": "...",
          "command": "SET key value"}
     """
+    # Enforce single-MONITOR-per-db limit
+    if db in _active_monitors:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({
+            "event": "error",
+            "detail": f"A MONITOR session for db={db} is already active. "
+                      "Only one MONITOR per database is allowed.",
+        }))
+        await websocket.close(code=1008)
+        return
+
+    _active_monitors.add(db)
+    logger.info("MONITOR started for Redis db=%s", db)
     await websocket.accept()
     try:
         await websocket.send_text(json.dumps({
             "event": "connected",
-            "warning": "MONITOR active — Redis throughput is reduced",
+            "warning": "MONITOR active — Redis throughput may be reduced by ~50%",
         }))
         q, stop = rs.make_thread_queue(rs.monitor_generator, db)
         loop = asyncio.get_event_loop()
 
         while True:
-            item = await loop.run_in_executor(None, q.get)
+            try:
+                item = await asyncio.wait_for(
+                    loop.run_in_executor(None, q.get), timeout=30.0
+                )
+            except asyncio.TimeoutError:
+                await websocket.send_text(json.dumps({"event": "heartbeat"}))
+                continue
             if item is None:
                 break
             if isinstance(item, dict) and "__error__" in item:
                 await websocket.send_text(json.dumps({"event": "error", "detail": item["__error__"]}))
                 break
+            if isinstance(item, dict) and "__warning__" in item:
+                await websocket.send_text(json.dumps({"event": "warning", "detail": item["__warning__"]}))
+                continue
             await websocket.send_text(json.dumps(item, default=str))
     except WebSocketDisconnect:
         pass
@@ -554,6 +593,8 @@ async def monitor_ws(
         except Exception:
             pass
     finally:
+        _active_monitors.discard(db)
+        logger.info("MONITOR stopped for Redis db=%s", db)
         try:
             stop.set()
         except Exception:
@@ -669,5 +710,5 @@ def redis_health(db: int = Query(0, ge=0, le=15)):
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail={"status": "unhealthy", "detail": str(exc)},
+            detail=f"unhealthy: {exc}",
         )

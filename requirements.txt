@@ -4,3 +4,4 @@ docker==7.1.0
 websockets==14.1
 python-multipart==0.0.20
 redis[hiredis]==5.2.1
+pydantic-settings==2.7.0

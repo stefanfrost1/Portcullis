@@ -12,6 +12,7 @@ Connection is configured via environment variables:
 """
 
 import base64
+import logging
 import os
 import queue
 import threading
@@ -21,51 +22,77 @@ from typing import Any, Generator, Optional
 import redis
 from redis.exceptions import RedisError, ResponseError
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Connection pools — one per (decoded | binary) × db index
 # ---------------------------------------------------------------------------
 
 _pools: dict[int, redis.ConnectionPool] = {}
 _bin_pools: dict[int, redis.ConnectionPool] = {}
+_pools_lock = threading.RLock()   # protects both _pools and _bin_pools
 
 _REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 _REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 _REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD") or None
+_REDIS_DB = int(os.environ.get("REDIS_DB", "0"))   # default db index
 
 
 def _pool(db: int) -> redis.ConnectionPool:
     if db not in _pools:
-        _pools[db] = redis.ConnectionPool(
-            host=_REDIS_HOST,
-            port=_REDIS_PORT,
-            password=_REDIS_PASSWORD,
-            db=db,
-            decode_responses=True,
-            max_connections=20,
-        )
+        with _pools_lock:
+            if db not in _pools:  # double-checked locking
+                _pools[db] = redis.ConnectionPool(
+                    host=_REDIS_HOST,
+                    port=_REDIS_PORT,
+                    password=_REDIS_PASSWORD,
+                    db=db,
+                    decode_responses=True,
+                    max_connections=20,
+                )
     return _pools[db]
 
 
 def _bin_pool(db: int) -> redis.ConnectionPool:
     """Binary client — for DUMP/RESTORE where decode_responses must be False."""
     if db not in _bin_pools:
-        _bin_pools[db] = redis.ConnectionPool(
-            host=_REDIS_HOST,
-            port=_REDIS_PORT,
-            password=_REDIS_PASSWORD,
-            db=db,
-            decode_responses=False,
-            max_connections=5,
-        )
+        with _pools_lock:
+            if db not in _bin_pools:
+                _bin_pools[db] = redis.ConnectionPool(
+                    host=_REDIS_HOST,
+                    port=_REDIS_PORT,
+                    password=_REDIS_PASSWORD,
+                    db=db,
+                    decode_responses=False,
+                    max_connections=5,
+                )
     return _bin_pools[db]
 
 
-def get_client(db: int = 0) -> redis.Redis:
+def get_client(db: int = _REDIS_DB) -> redis.Redis:
     return redis.Redis(connection_pool=_pool(db))
 
 
-def get_bin_client(db: int = 0) -> redis.Redis:
+def get_bin_client(db: int = _REDIS_DB) -> redis.Redis:
     return redis.Redis(connection_pool=_bin_pool(db))
+
+
+def close_all_pools() -> None:
+    """Disconnect all connection pools. Called from the app lifespan shutdown."""
+    with _pools_lock:
+        for pool in list(_pools.values()):
+            try:
+                pool.disconnect()
+            except Exception:
+                pass
+        for pool in list(_bin_pools.values()):
+            try:
+                pool.disconnect()
+            except Exception:
+                pass
+        _pools.clear()
+        _bin_pools.clear()
+    logger.info("Redis connection pools closed")
 
 
 # ---------------------------------------------------------------------------
@@ -559,8 +586,22 @@ def get_config(pattern: str = "*", db: int = 0) -> dict:
     return dict(get_client(db).config_get(pattern))
 
 
+_CONFIG_BLOCKLIST = {
+    "requirepass", "masterauth", "aclfile", "acllog-max-len",
+    "dir", "logfile", "appendfilename", "dbfilename",
+    "tls-cert-file", "tls-key-file", "tls-ca-cert-file",
+    "tls-client-cert-file", "tls-client-key-file",
+}
+
+
 def set_config(parameter: str, value: str, db: int = 0) -> dict:
+    if parameter.lower() in _CONFIG_BLOCKLIST:
+        raise ValueError(
+            f"Parameter '{parameter}' is blocked for security reasons. "
+            "Modify this setting directly in your Redis configuration file."
+        )
     get_client(db).config_set(parameter, value)
+    logger.info("Redis CONFIG SET %s (db=%s)", parameter, db)
     return {"parameter": parameter, "value": value}
 
 
@@ -943,7 +984,11 @@ def make_thread_queue(
                 try:
                     q.put(item, timeout=1)
                 except queue.Full:
-                    pass
+                    # Warn the consumer that messages are being dropped
+                    try:
+                        q.put_nowait({"__warning__": "queue_overflow"})
+                    except queue.Full:
+                        pass  # queue truly saturated; drop silently
         except Exception as exc:
             q.put({"__error__": str(exc)})
         finally:
@@ -1307,6 +1352,29 @@ def get_queues(
     return result
 
 
+def _parse_xpending(raw) -> Optional[dict]:
+    """
+    Normalise XPENDING summary output across Redis versions.
+
+    Redis 5.0 returns a list: [count, min_id, max_id, [[consumer, count], ...]]
+    Redis 6.0+ returns a dict: {pending, min, max, consumers: [{name, pending}, ...]}
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        if len(raw) < 4 or raw[0] == 0:
+            return None
+        consumers_raw = raw[3] or []
+        return {
+            "pending": raw[0],
+            "min": raw[1],
+            "max": raw[2],
+            "consumers": [{"name": c[0], "pending": int(c[1])} for c in consumers_raw],
+        }
+    # Dict format (Redis 6.0+)
+    return raw if raw.get("pending", 0) > 0 else None
+
+
 def get_queue_detail(key: str, sample_count: int = 10, db: int = 0) -> dict:
     """
     Deep-dive into a single list or stream queue key.
@@ -1357,8 +1425,9 @@ def get_queue_detail(key: str, sample_count: int = 10, db: int = 0) -> dict:
         })
         try:
             # XPENDING <key> <group>  — summary form (Redis 5.0+)
-            pending_info = r.xpending(key, group_name)
-            if pending_info and pending_info.get("pending", 0) > 0:
+            pending_raw = r.xpending(key, group_name)
+            pending_info = _parse_xpending(pending_raw)
+            if pending_info:
                 min_id = pending_info.get("min", "")
                 max_id = pending_info.get("max", "")
                 consumers_raw = pending_info.get("consumers") or []

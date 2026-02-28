@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query, status
-from docker.errors import NotFound, APIError
+import logging
+
+from fastapi import APIRouter, Query, status
+from docker.errors import DockerException
 
 from src.models.schemas import (
     APIResponse,
@@ -7,23 +9,11 @@ from src.models.schemas import (
     ContainerStats,
     ContainerSummary,
 )
+from src.routers._docker_errors import handle_docker_exc
 from src.services import docker_service as ds
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/containers", tags=["Containers"])
-
-
-def _not_found(container_id: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Container '{container_id}' not found",
-    )
-
-
-def _docker_error(exc: APIError) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=str(exc),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -42,8 +32,8 @@ def list_containers(
     try:
         data = ds.list_containers(all_containers=not running_only)
         return APIResponse(data=data)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +57,8 @@ def all_container_stats(
 ):
     try:
         return APIResponse(data=ds.get_all_container_stats(timeout_seconds=timeout, max_workers=max_workers))
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +78,8 @@ def all_container_stats(
 def compose_groups():
     try:
         return APIResponse(data=ds.get_compose_groups())
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -104,10 +94,8 @@ def compose_groups():
 def get_container(container_id: str):
     try:
         return APIResponse(data=ds.get_container(container_id))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 # ---------------------------------------------------------------------------
@@ -123,10 +111,8 @@ def get_container(container_id: str):
 def container_stats(container_id: str):
     try:
         return APIResponse(data=ds.get_container_stats(container_id))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 # ---------------------------------------------------------------------------
@@ -140,12 +126,11 @@ def container_stats(container_id: str):
     status_code=status.HTTP_200_OK,
 )
 def start_container(container_id: str):
+    logger.info("Starting container %s", container_id)
     try:
         return APIResponse(data=ds.start_container(container_id))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 @router.post(
@@ -157,12 +142,11 @@ def stop_container(
     container_id: str,
     timeout: int = Query(10, description="Seconds to wait before killing"),
 ):
+    logger.info("Stopping container %s", container_id)
     try:
         return APIResponse(data=ds.stop_container(container_id, timeout=timeout))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 @router.post(
@@ -176,10 +160,8 @@ def restart_container(
 ):
     try:
         return APIResponse(data=ds.restart_container(container_id, timeout=timeout))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 @router.post(
@@ -190,10 +172,8 @@ def restart_container(
 def pause_container(container_id: str):
     try:
         return APIResponse(data=ds.pause_container(container_id))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 @router.post(
@@ -204,10 +184,8 @@ def pause_container(container_id: str):
 def unpause_container(container_id: str):
     try:
         return APIResponse(data=ds.unpause_container(container_id))
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
 
 
 # ---------------------------------------------------------------------------
@@ -225,10 +203,9 @@ def remove_container(
     force: bool = Query(False, description="Force removal of a running container"),
     remove_volumes: bool = Query(False, alias="v", description="Remove associated anonymous volumes"),
 ):
+    logger.info("Removing container %s (force=%s, volumes=%s)", container_id, force, remove_volumes)
     try:
         ds.remove_container(container_id, force=force, remove_volumes=remove_volumes)
         return APIResponse(data={"removed": container_id})
-    except NotFound:
-        raise _not_found(container_id)
-    except APIError as exc:
-        raise _docker_error(exc)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)

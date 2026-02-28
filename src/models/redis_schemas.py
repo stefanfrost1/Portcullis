@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,8 @@ class RedisCopyRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 class RedisBulkDeleteRequest(BaseModel):
-    keys: list[str]
+    keys: list[str] = Field(..., min_length=1, max_length=1000,
+                             description="Keys to delete (max 1000 per request)")
 
 
 # ---------------------------------------------------------------------------

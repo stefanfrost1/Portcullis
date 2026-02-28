@@ -5,6 +5,7 @@ All methods return plain dicts or primitives so that routers can
 serialize them with Pydantic without touching the SDK objects directly.
 """
 
+import logging
 import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
@@ -14,6 +15,8 @@ from typing import Generator, Optional
 import docker
 from docker.errors import DockerException, NotFound, APIError
 from docker.models.containers import Container
+
+logger = logging.getLogger(__name__)
 
 from src.models.schemas import (
     ContainerDetail,
@@ -33,9 +36,26 @@ from src.models.schemas import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+_client: docker.DockerClient | None = None
+
+
 def _docker_client() -> docker.DockerClient:
-    """Return a connected Docker client (socket-based inside the container)."""
-    return docker.from_env()
+    """Return a cached Docker client (lazy-initialised singleton)."""
+    global _client
+    if _client is None:
+        _client = docker.from_env()
+    return _client
+
+
+def close_docker_client() -> None:
+    """Close the Docker client connection. Called from the app lifespan shutdown."""
+    global _client
+    if _client is not None:
+        try:
+            _client.close()
+        except Exception:
+            pass
+        _client = None
 
 
 def _parse_iso(ts: Optional[str]) -> Optional[str]:
@@ -84,14 +104,30 @@ def _container_summary(c: Container) -> dict:
     }
 
 
+_SENSITIVE_ENV = re.compile(
+    r"(password|secret|token|key|cert|auth|credential|api_key|apikey|passwd|private)",
+    re.IGNORECASE,
+)
+
+
+def _mask_env(env_list: list[str]) -> list[str]:
+    """Replace values of sensitive environment variables with '***'."""
+    result = []
+    for entry in env_list:
+        name, _, _ = entry.partition("=")
+        result.append(f"{name}=***" if _SENSITIVE_ENV.search(name) else entry)
+    return result
+
+
 def _container_detail(c: Container) -> dict:
     base = _container_summary(c)
     attrs = c.attrs
+    raw_env = attrs.get("Config", {}).get("Env") or []
     base.update(
         {
             "image_id": attrs.get("Image", ""),
             "command": " ".join(attrs.get("Config", {}).get("Cmd") or []),
-            "env": attrs.get("Config", {}).get("Env") or [],
+            "env": _mask_env(raw_env),
             "mounts": attrs.get("Mounts") or [],
             "network_settings": attrs.get("NetworkSettings") or {},
             "host_config": attrs.get("HostConfig") or {},
@@ -250,6 +286,11 @@ def get_logs(
     return lines
 
 
+_MAX_PATTERN_LENGTH = 500
+_MAX_SEARCH_TAIL = 10_000
+_SEARCH_TIMEOUT_SECONDS = 5.0
+
+
 def search_logs(
     container_id: str,
     pattern: str,
@@ -260,6 +301,13 @@ def search_logs(
     timestamps: bool = False,
     case_insensitive: bool = False,
 ) -> dict:
+    # Guard: pattern length cap (ReDoS mitigation)
+    if len(pattern) > _MAX_PATTERN_LENGTH:
+        raise ValueError(f"Regex pattern too long (max {_MAX_PATTERN_LENGTH} characters)")
+
+    # Guard: tail cap
+    tail = min(tail, _MAX_SEARCH_TAIL)
+
     lines = get_logs(
         container_id,
         tail=tail,
@@ -274,7 +322,21 @@ def search_logs(
     except re.error as exc:
         raise ValueError(f"Invalid regex pattern: {exc}") from exc
 
-    matched = [line for line in lines if regex.search(line)]
+    # Execute search in a thread with a timeout to prevent ReDoS hangs
+    def _do_search() -> list[str]:
+        return [line for line in lines if regex.search(line)]
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(_do_search)
+        try:
+            matched = future.result(timeout=_SEARCH_TIMEOUT_SECONDS)
+        except FutureTimeoutError:
+            future.cancel()
+            raise ValueError(
+                f"Pattern search timed out after {_SEARCH_TIMEOUT_SECONDS}s — "
+                "simplify the regex or reduce tail size"
+            )
+
     truncated = len(matched) > max_results
     return {
         "container_id": container_id,
