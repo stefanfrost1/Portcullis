@@ -1,20 +1,22 @@
 # ============================================================
-# docker-compose.yml — MyEngineAPI (Docker + Redis bridge)
+# docker-compose.yml — MyEngineAPI + Streamlit frontend + Redis
 #
-# Drop this service definition into your existing docker-compose.yml
-# or use it as an override file.
+# Quickstart (all three services):
+#   docker compose up --build
 #
-# Requirements:
-#   - Mount the Docker socket so the service can query the Docker daemon.
-#   - Set REDIS_HOST to the service name of your Redis container.
-#
-# First-time setup:
-#   docker network create internal   (if it doesn't already exist)
+# URLs after startup:
+#   UI (Streamlit):  http://localhost:8501
+#   API (FastAPI):   http://localhost:8000/api/v1/docs
+#   Redis:           localhost:6379 (internal only by default)
 # ============================================================
 
 version: "3.9"
 
 services:
+
+  # ------------------------------------------------------------------
+  # Streamlit frontend
+  # ------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
@@ -32,6 +34,9 @@ services:
     networks:
       - internal
 
+  # ------------------------------------------------------------------
+  # FastAPI backend
+  # ------------------------------------------------------------------
   myengineapi:
     build:
       context: .
@@ -39,23 +44,19 @@ services:
     container_name: myengineapi
     restart: unless-stopped
     ports:
-      - "8000:8000"         # expose on host; remove if only internal access is needed
+      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # :ro allows read-only introspection + container start/stop/remove via the Docker API.
-      # The API itself enforces all access control — the socket does not need :rw.
     environment:
       - PYTHONUNBUFFERED=1
-      # ---- CORS (comma-separated list of allowed UI origins) ----
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-      # ---- API key authentication (off by default) ----
-      # - API_KEY_ENABLED=true
-      # - API_KEY=change-me-to-a-strong-secret
-      # ---- Redis connection ----
-      - REDIS_HOST=redis          # service name of your Redis container
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
-      # - REDIS_PASSWORD=secret   # uncomment if your Redis requires auth
-      # - REDIS_DB=0              # default database index (0–15)
+      # - REDIS_PASSWORD=secret        # uncomment if Redis requires auth
+      # - REDIS_DB=0                   # default database index (0-15)
+      # - API_KEY_ENABLED=true         # uncomment to require X-API-Key header
+      # - API_KEY=change-me-to-a-strong-secret
+    depends_on:
+      - redis
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)"]
@@ -63,20 +64,32 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
-        reservations:
-          cpus: "0.25"
-          memory: 128M
     networks:
-      - internal            # join your existing internal network
+      - internal
+
+  # ------------------------------------------------------------------
+  # Redis
+  # ------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: myengine-redis
+    restart: unless-stopped
+    # Port 6379 is NOT exposed to the host by default.
+    # Uncomment the lines below if you need direct Redis access:
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - internal
 
 # ---------------------------------------------------------------------------
-# Reference your existing network here instead of creating a new one:
+# Volumes & networks
 # ---------------------------------------------------------------------------
+volumes:
+  redis_data:
+
 networks:
   internal:
-    external: true          # set to false if you want this file to create it
+    driver: bridge
