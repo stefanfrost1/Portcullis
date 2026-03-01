@@ -469,6 +469,28 @@ def get_network(network_id: str) -> dict:
     return _network_summary(net)
 
 
+def create_network(
+    name: str,
+    driver: str = "bridge",
+    internal: bool = False,
+    labels: Optional[dict] = None,
+) -> dict:
+    client = _docker_client()
+    net = client.networks.create(
+        name=name,
+        driver=driver,
+        internal=internal,
+        labels=labels or {},
+    )
+    return _network_summary(net)
+
+
+def remove_network(network_id: str) -> None:
+    client = _docker_client()
+    net = client.networks.get(network_id)
+    net.remove()
+
+
 # ---------------------------------------------------------------------------
 # Volume operations
 # ---------------------------------------------------------------------------
@@ -493,6 +515,26 @@ def get_volume(volume_name: str) -> dict:
     client = _docker_client()
     vol = client.volumes.get(volume_name)
     return _volume_summary(vol)
+
+
+def create_volume(
+    name: str,
+    driver: str = "local",
+    labels: Optional[dict] = None,
+) -> dict:
+    client = _docker_client()
+    vol = client.volumes.create(
+        name=name,
+        driver=driver,
+        labels=labels or {},
+    )
+    return _volume_summary(vol)
+
+
+def remove_volume(volume_name: str, force: bool = False) -> None:
+    client = _docker_client()
+    vol = client.volumes.get(volume_name)
+    vol.remove(force=force)
 
 
 def prune_volumes() -> dict:

@@ -112,45 +112,56 @@ All endpoints are under the base path `/api/v1`.
 
 | Method | Path                                    | Description                                  |
 |--------|-----------------------------------------|----------------------------------------------|
-| GET    | `/redis/keys`                           | Scan keys (pattern, type, cursor, count)     |
-| GET    | `/redis/keys/{key}`                     | Get key value + TTL                          |
-| PUT    | `/redis/keys/{key}`                     | Set / update a key                           |
-| DELETE | `/redis/keys/{key}`                     | Delete a key                                 |
-| DELETE | `/redis/keys`                           | Bulk delete (body: list of keys, max 1000)   |
-| POST   | `/redis/keys/{key}/expire`              | Set TTL or PERSIST                           |
-| POST   | `/redis/keys/{key}/rename`              | Rename (optionally NX)                       |
-| POST   | `/redis/keys/{key}/copy`                | Copy to another key/DB                       |
-| *many* | `/redis/keys/{key}/hash\|list\|set\|zset` | Type-specific field/member operations      |
-| GET    | `/redis/info`                           | Redis INFO [section]                         |
-| GET    | `/redis/databases`                      | Per-DB key counts                            |
-| GET    | `/redis/dbsize`                         | DBSIZE                                       |
-| GET    | `/redis/config`                         | CONFIG GET                                   |
-| POST   | `/redis/config`                         | CONFIG SET                                   |
-| POST   | `/redis/config/rewrite`                 | CONFIG REWRITE                               |
-| POST   | `/redis/config/resetstat`               | CONFIG RESETSTAT                             |
-| POST   | `/redis/bgsave`                         | BGSAVE                                       |
-| POST   | `/redis/bgrewriteaof`                   | BGREWRITEAOF                                 |
-| POST   | `/redis/flushdb`                        | FLUSHDB (requires `?confirm=true`)           |
-| POST   | `/redis/flushall`                       | FLUSHALL (requires `?confirm=true`)          |
-| GET    | `/redis/clients`                        | CLIENT LIST                                  |
-| POST   | `/redis/clients/kill`                   | CLIENT KILL                                  |
-| GET    | `/redis/slowlog`                        | SLOWLOG GET                                  |
-| POST   | `/redis/slowlog/reset`                  | SLOWLOG RESET                                |
-| GET    | `/redis/memory/stats`                   | MEMORY STATS + MEMORY DOCTOR                 |
-| GET    | `/redis/memory/malloc-stats`            | MEMORY MALLOC-STATS                          |
-| GET    | `/redis/latency/latest`                 | LATENCY LATEST                               |
-| GET    | `/redis/latency/history/{event}`        | LATENCY HISTORY                              |
-| POST   | `/redis/latency/reset`                  | LATENCY RESET                                |
-| GET    | `/redis/pubsub/channels`                | PUBSUB CHANNELS                              |
-| POST   | `/redis/pubsub/publish`                 | PUBLISH                                      |
-| WS     | `/redis/pubsub/subscribe`               | Live SUBSCRIBE stream                        |
-| WS     | `/redis/monitor`                        | MONITOR command stream                       |
-| GET    | `/redis/analysis/keyspace`              | Type + prefix + TTL distribution             |
-| GET    | `/redis/analysis/memory-top`            | Top-N keys by memory (sample)                |
-| GET    | `/redis/analysis/expiring-soon`         | Keys expiring within N seconds               |
-| POST   | `/redis/eval`                           | EVAL (Lua script)                            |
-| GET    | `/redis/health`                         | Redis connectivity check                     |
-| GET    | `/redis/queues`                         | Queue depth for List + Stream keys           |
+| GET    | `/redis/keys`                              | Scan keys (pattern, type, cursor, count)        |
+| GET    | `/redis/keys/count`                        | DBSIZE shortcut                                 |
+| GET    | `/redis/keys/{key}`                        | Get key value + TTL                             |
+| PUT    | `/redis/keys/{key}`                        | Set / update a key                              |
+| DELETE | `/redis/keys/{key}`                        | Delete a key                                    |
+| DELETE | `/redis/keys`                              | Bulk delete (body: list of keys, max 1000)      |
+| GET    | `/redis/keys/{key}/ttl`                    | TTL + PTTL                                      |
+| POST   | `/redis/keys/{key}/expire`                 | Set TTL or PERSIST                              |
+| POST   | `/redis/keys/{key}/persist`                | Remove TTL (PERSIST)                            |
+| POST   | `/redis/keys/{key}/rename`                 | Rename (optionally NX)                          |
+| POST   | `/redis/keys/{key}/copy`                   | Copy to another key/DB                          |
+| GET    | `/redis/keys/{key}/metadata`               | Type, encoding, refcount, idletime, memory      |
+| GET    | `/redis/keys/{key}/dump`                   | DUMP (base64-encoded binary serialization)      |
+| *many* | `/redis/keys/{key}/hash\|list\|set\|zset\|stream` | Type-specific field/member operations  |
+| GET    | `/redis/info`                              | Redis INFO [section]                            |
+| GET    | `/redis/databases`                         | Per-DB key counts                               |
+| GET    | `/redis/dbsize`                            | DBSIZE                                          |
+| GET    | `/redis/summary`                           | Dashboard summary (server, clients, memory, performance, keyspace, replication) |
+| GET    | `/redis/replication`                       | Replication status — role, replicas, offsets, lag |
+| GET    | `/redis/performance`                       | Performance metrics — ops/sec, hit rate, eviction, I/O |
+| GET    | `/redis/config`                            | CONFIG GET                                      |
+| POST   | `/redis/config`                            | CONFIG SET                                      |
+| POST   | `/redis/config/rewrite`                    | CONFIG REWRITE                                  |
+| POST   | `/redis/config/resetstat`                  | CONFIG RESETSTAT                                |
+| POST   | `/redis/bgsave`                            | BGSAVE                                          |
+| POST   | `/redis/bgrewriteaof`                      | BGREWRITEAOF                                    |
+| POST   | `/redis/flushdb`                           | FLUSHDB (requires `?confirm=true`)              |
+| POST   | `/redis/flushall`                          | FLUSHALL (requires `?confirm=true`)             |
+| GET    | `/redis/clients`                           | CLIENT LIST                                     |
+| POST   | `/redis/clients/kill`                      | CLIENT KILL                                     |
+| GET    | `/redis/slowlog`                           | SLOWLOG GET                                     |
+| GET    | `/redis/slowlog/len`                       | SLOWLOG LEN — number of entries                 |
+| POST   | `/redis/slowlog/reset`                     | SLOWLOG RESET                                   |
+| GET    | `/redis/memory/stats`                      | MEMORY STATS + MEMORY DOCTOR                    |
+| GET    | `/redis/memory/malloc-stats`               | MEMORY MALLOC-STATS                             |
+| GET    | `/redis/latency/latest`                    | LATENCY LATEST                                  |
+| GET    | `/redis/latency/history/{event}`           | LATENCY HISTORY                                 |
+| POST   | `/redis/latency/reset`                     | LATENCY RESET                                   |
+| GET    | `/redis/pubsub/channels`                   | PUBSUB CHANNELS                                 |
+| GET    | `/redis/pubsub/numsub`                     | PUBSUB NUMSUB — subscriber count per channel    |
+| GET    | `/redis/pubsub/numpat`                     | PUBSUB NUMPAT — number of pattern subscriptions |
+| POST   | `/redis/pubsub/publish`                    | PUBLISH                                         |
+| WS     | `/redis/pubsub/subscribe`                  | Live SUBSCRIBE stream                           |
+| WS     | `/redis/monitor`                           | MONITOR command stream                          |
+| GET    | `/redis/analysis/keyspace`                 | Type + prefix + TTL distribution                |
+| GET    | `/redis/analysis/memory-top`               | Top-N keys by memory (sample)                   |
+| GET    | `/redis/analysis/expiring-soon`            | Keys expiring within N seconds                  |
+| POST   | `/redis/eval`                              | EVAL (Lua script)                               |
+| GET    | `/redis/health`                            | Redis connectivity check                        |
+| GET    | `/redis/queues`                            | Queue depth for List + Stream keys              |
 
 ### Overview
 
