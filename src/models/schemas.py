@@ -78,6 +78,23 @@ class LogSearchResult(BaseModel):
     truncated: bool
 
 
+class GlobalLogSearchContainerResult(BaseModel):
+    container_id: str
+    container_name: str
+    matched_lines: list[str]
+    match_count: int
+    truncated: bool
+
+
+class GlobalLogSearchResult(BaseModel):
+    pattern: str
+    containers_searched: int
+    containers_with_matches: int
+    total_matched: int
+    results: list[GlobalLogSearchContainerResult]
+    errors: list[dict]
+
+
 # ---------------------------------------------------------------------------
 # Image schemas
 # ---------------------------------------------------------------------------

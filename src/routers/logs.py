@@ -1,10 +1,11 @@
 """
 Log endpoints:
 
-  GET  /containers/{id}/logs          — fetch N tail lines (plain or with timestamps)
-  GET  /containers/{id}/logs/search   — egrep-style regex search, max 2000 lines returned
+  GET  /containers/{id}/logs          — fetch up to 2000 tail lines (plain or with timestamps)
+  GET  /containers/{id}/logs/search   — egrep-style regex search within a single container
   WS   /containers/{id}/logs/stream   — WebSocket live log tail
   GET  /containers/{id}/logs/stream   — SSE live log tail (alternative to WebSocket)
+  GET  /logs/search                   — egrep-style regex search across ALL containers (global)
 """
 
 import asyncio
@@ -22,6 +23,7 @@ from src.services import docker_service as ds
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/containers", tags=["Logs"])
+global_router = APIRouter(prefix="/logs", tags=["Logs"])
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +42,7 @@ router = APIRouter(prefix="/containers", tags=["Logs"])
 )
 def get_logs(
     container_id: str,
-    tail: int = Query(100, ge=1, le=10000, description="Number of lines from the end"),
+    tail: int = Query(2000, ge=1, le=2000, description="Number of lines from the end (max 2000)"),
     since: Optional[str] = Query(None, description="Show logs since timestamp or relative (e.g. 1h)"),
     until: Optional[str] = Query(None, description="Show logs until timestamp"),
     timestamps: bool = Query(False, description="Include Docker timestamps in each line"),
@@ -75,8 +77,8 @@ def get_logs(
 def search_logs(
     container_id: str,
     pattern: str = Query(..., description="Extended regex pattern (egrep-compatible)"),
-    tail: int = Query(5000, ge=1, le=100000, description="Lines to search through"),
-    max_results: int = Query(2000, ge=1, le=2000, description="Maximum matched lines to return"),
+    tail: int = Query(2000, ge=1, le=2000, description="Lines to search through (max 2000)"),
+    max_results: int = Query(200, ge=1, le=2000, description="Maximum matched lines to return"),
     since: Optional[str] = Query(None),
     until: Optional[str] = Query(None),
     timestamps: bool = Query(False),
@@ -202,3 +204,47 @@ def stream_logs_sse(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Global log search (all containers, egrep-style)
+# ---------------------------------------------------------------------------
+
+@global_router.get(
+    "/search",
+    summary="Search logs across all containers (global egrep-style)",
+    description=(
+        "Fetch the last `tail` lines from every container and filter them with `pattern` "
+        "(Python extended regex / egrep compatible). "
+        "Containers are searched in parallel on the server; only the matching lines are returned. "
+        "By default only running containers are searched; pass `running_only=false` to include stopped ones. "
+        "Results are grouped by container and sorted by container name."
+    ),
+    response_model=APIResponse,
+)
+def global_search_logs(
+    pattern: str = Query(..., description="Extended regex pattern (egrep-compatible)"),
+    tail: int = Query(2000, ge=1, le=2000, description="Lines to search per container (max 2000)"),
+    max_results_per_container: int = Query(200, ge=1, le=2000, description="Max matched lines returned per container"),
+    since: Optional[str] = Query(None, description="Show logs since timestamp or relative (e.g. 1h)"),
+    until: Optional[str] = Query(None, description="Show logs until timestamp"),
+    timestamps: bool = Query(False, description="Include Docker timestamps in matched lines"),
+    case_insensitive: bool = Query(False, description="Case-insensitive matching"),
+    running_only: bool = Query(True, description="Only search running containers (false includes stopped)"),
+):
+    try:
+        result = ds.global_search_logs(
+            pattern=pattern,
+            tail=tail,
+            max_results_per_container=max_results_per_container,
+            since=since,
+            until=until,
+            timestamps=timestamps,
+            case_insensitive=case_insensitive,
+            running_only=running_only,
+        )
+        return APIResponse(data=result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except DockerException as exc:
+        raise handle_docker_exc(exc, "global")
