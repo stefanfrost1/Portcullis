@@ -74,7 +74,7 @@ else:
         margin=dict(t=20, b=40, l=20, r=20),
         height=max(300, min(top_n * 28, 800)),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Table
     rows = []
@@ -87,7 +87,7 @@ else:
             "Pending": q.get("pending_count", "—") if q.get("type") == "stream" else "—",
         })
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
     st.divider()
     st.subheader("Queue detail")
@@ -106,6 +106,6 @@ else:
                 if groups:
                     st.write(f"**Consumer groups ({len(groups)}):**")
                     gdf = pd.DataFrame(groups)
-                    st.dataframe(gdf, use_container_width=True, hide_index=True)
+                    st.dataframe(gdf, width="stretch", hide_index=True)
                 else:
                     st.write("No consumer groups.")

@@ -61,7 +61,7 @@ with tab_keyspace:
                     font=dict(color="#fafafa"),
                     margin=dict(t=20, b=20, l=20, r=20),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             else:
                 st.info("No type data.")
 
@@ -87,7 +87,7 @@ with tab_keyspace:
                     font=dict(color="#fafafa"),
                     margin=dict(t=20, b=40, l=20, r=20),
                 )
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
             else:
                 st.info("No prefix data.")
 
@@ -109,7 +109,7 @@ with tab_keyspace:
                 font=dict(color="#fafafa"),
                 margin=dict(t=20, b=40),
             )
-            st.plotly_chart(fig3, use_container_width=True)
+            st.plotly_chart(fig3, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Memory Top
@@ -131,7 +131,7 @@ with tab_memory_top:
                 "Memory (bytes)": entry.get("memory_bytes", 0),
             })
         df = pd.DataFrame(rows)
-        st.dataframe(df[["Key", "Type", "Memory"]], use_container_width=True, hide_index=True)
+        st.dataframe(df[["Key", "Type", "Memory"]], width="stretch", hide_index=True)
 
         # Bar chart
         if rows:
@@ -152,7 +152,7 @@ with tab_memory_top:
                 font=dict(color="#fafafa"),
                 margin=dict(t=20, b=40, l=20, r=20),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Expiring Soon
@@ -181,4 +181,4 @@ with tab_expiring:
             })
         df = pd.DataFrame(rows).sort_values("TTL (s)")
         st.write(f"**{len(expiring)} key(s)** expiring within {seconds_to_human(window_secs)}")
-        st.dataframe(df[["Key", "Type", "TTL"]], use_container_width=True, hide_index=True)
+        st.dataframe(df[["Key", "Type", "TTL"]], width="stretch", hide_index=True)

@@ -25,6 +25,15 @@ c = get_client()
 if "last_error" in st.session_state:
     st.error(st.session_state["last_error"])
 
+
+def _percent_text(value) -> str:
+    try:
+        if value is None:
+            return "—"
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
 with st.sidebar:
     if st.button("↻ Refresh"):
         st.rerun()
@@ -71,7 +80,7 @@ with tab_summary:
         st.subheader("Performance & Keys")
         c7, c8, c9 = st.columns(3)
         c7.metric("Ops / sec", f"{perf.get('instantaneous_ops_per_sec', 0):,}")
-        c8.metric("Hit Rate", f"{perf.get('hit_rate_percent', 0):.1f}%")
+        c8.metric("Hit Rate", _percent_text(perf.get("hit_rate_percent")))
         c9.metric("Total Keys", keyspace.get("total_keys", 0))
 
         st.subheader("Replication")
@@ -93,7 +102,7 @@ with tab_perf:
         p2.metric("Net I/O (in)", bytes_to_human(perf.get("instantaneous_input_kbps")) + "/s" if perf.get("instantaneous_input_kbps") is not None else "—")
 
         p3, p4 = st.columns(2)
-        p3.metric("Hit Rate", f"{perf.get('hit_rate_percent', 0):.1f}%")
+        p3.metric("Hit Rate", _percent_text(perf.get("hit_rate_percent")))
         p4.metric("Evictions", f"{perf.get('evicted_keys', 0):,}")
 
         p5, p6 = st.columns(2)
@@ -125,7 +134,7 @@ with tab_repl:
         replicas = repl.get("replicas", []) or []
         if replicas:
             st.subheader("Replicas")
-            st.dataframe(pd.DataFrame(replicas), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(replicas), width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------------------
 # Clients
@@ -137,7 +146,7 @@ with tab_clients:
         st.info("No client data.")
     else:
         df = pd.DataFrame(clients)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------------------
 # Slow Log
@@ -164,7 +173,7 @@ with tab_slow:
                 "Command": " ".join(str(a) for a in (entry.get("args") or [])),
                 "Client": entry.get("client_addr", "—"),
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -284,4 +293,4 @@ with tab_latency:
     if not latency:
         st.info("No latency events recorded.")
     else:
-        st.dataframe(pd.DataFrame(latency), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(latency), width="stretch", hide_index=True)
