@@ -179,7 +179,7 @@ else:
                             pd.DataFrame(
                                 [{"Field": k, "Value": v} for k, v in value.items()]
                             ),
-                            use_container_width=True,
+                            width="stretch",
                             hide_index=True,
                         )
                     elif ktype in ("list", "set") and isinstance(value, list):
@@ -191,7 +191,7 @@ else:
                     elif ktype == "zset" and isinstance(value, list):
                         st.dataframe(
                             pd.DataFrame(value[:50]),
-                            use_container_width=True,
+                            width="stretch",
                             hide_index=True,
                         )
                     else:

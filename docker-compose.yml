@@ -42,9 +42,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: myengineapi
+    # Needed for Docker socket access inside container on Windows/WSL hosts.
+    user: "0:0"
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:

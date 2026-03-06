@@ -65,7 +65,7 @@ with tab_all:
                 "Ports": port_str or "—",
             })
         df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
 
         st.divider()
         st.subheader("Container detail & controls")
@@ -182,7 +182,7 @@ with tab_stats:
             })
 
         df_stats = pd.DataFrame(rows)
-        st.dataframe(df_stats, use_container_width=True, hide_index=True)
+        st.dataframe(df_stats, width="stretch", hide_index=True)
 
         # CPU bar chart
         names = [s.get("name", "?") for s in stats_list]
@@ -200,7 +200,7 @@ with tab_stats:
             font=dict(color="#fafafa"),
             margin=dict(t=20, b=40),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Tab 3: By Compose Project

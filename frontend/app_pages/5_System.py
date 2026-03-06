@@ -104,7 +104,7 @@ if df_data:
         font=dict(color="#fafafa"),
         margin=dict(t=20, b=40),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Raw image list
     with st.expander("Images"):
