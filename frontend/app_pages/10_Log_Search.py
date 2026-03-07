@@ -245,31 +245,37 @@ def _render_context_panel():
 
 
 def _render_search_bar(scope_label: str):
-    """Render the compact search bar and handle button clicks."""
+    """Render the search bar. Enter/default submit = current scope; 🌐 All = explicit override."""
     with st.container(border=True):
-        sc1, sc2, sc3, sc4, sc5 = st.columns([5, 1, 1, 1, 1])
-        with sc1:
-            pat = st.text_input(
-                "Search pattern",
-                value=st.session_state.get("search_pattern", ""),
-                placeholder="regex  e.g.  error|warn|timeout",
-                label_visibility="collapsed", key="search_input",
-            )
-        with sc2:
-            case_i = st.checkbox("i", value=False, help="Case-insensitive")
-        with sc3:
-            search_this = st.button(
-                f"🐳 {scope_label}", use_container_width=True,
-                help="Search within selected container" if not is_global else "Search all running",
-            )
-        with sc4:
-            search_all = st.button("🌐 All", use_container_width=True,
-                                   help="Search across all containers")
-        with sc5:
-            if st.session_state.get("search_results"):
-                if st.button("✕", use_container_width=True, help="Clear results"):
-                    _clear_state("search_results", "search_pattern")
-                    st.rerun()
+        # Clear button lives outside the form so it never accidentally triggers a search
+        if st.session_state.get("search_results"):
+            if st.button("✕ Clear results", key="clear_search", use_container_width=False):
+                _clear_state("search_results", "search_pattern")
+                st.rerun()
+
+        with st.form("search_form", border=False):
+            fc1, fc2, fc3, fc4 = st.columns([6, 1, 1, 1])
+            with fc1:
+                pat = st.text_input(
+                    "Search pattern",
+                    value=st.session_state.get("search_pattern", ""),
+                    placeholder="regex  e.g.  error|warn|timeout",
+                    label_visibility="collapsed",
+                )
+            with fc2:
+                case_i = st.checkbox("i", value=False, help="Case-insensitive")
+            with fc3:
+                # Primary submit — triggered by Enter key
+                search_this = st.form_submit_button(
+                    f"🐳 {scope_label}", use_container_width=True, type="primary",
+                    help="Search within selected container (default — press Enter)" if not is_global
+                         else "Search all running containers (default — press Enter)",
+                )
+            with fc4:
+                search_all = st.form_submit_button(
+                    "🌐 All", use_container_width=True,
+                    help="Search across ALL containers regardless of current selection",
+                )
 
     return pat, case_i, search_this, search_all
 
