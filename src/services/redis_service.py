@@ -711,7 +711,12 @@ def slowlog_reset(db: int = 0) -> dict:
 def get_memory_stats(db: int = 0) -> dict:
     r = get_client(db)
     stats = r.memory_stats()
-    doctor = r.memory_doctor()
+    try:
+        doctor = r.execute_command("MEMORY DOCTOR")
+        if isinstance(doctor, bytes):
+            doctor = doctor.decode("utf-8", errors="replace")
+    except Exception:
+        doctor = None
     return {"stats": stats, "doctor": doctor}
 
 
