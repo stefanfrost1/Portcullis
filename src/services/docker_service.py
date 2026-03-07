@@ -157,6 +157,43 @@ def _split_docker_line(line: str) -> tuple[Optional[str], str]:
     return None, line
 
 
+_PIVOT_TS_RE = re.compile(
+    r"^(?P<base>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+    r"(?P<fraction>\.\d+)?"
+    r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
+)
+
+
+def _parse_pivot_datetime(pivot: str) -> datetime:
+    """
+    Parse an ISO-8601 pivot timestamp safely.
+
+    Docker log timestamps often contain nanoseconds (9 digits), while Python's
+    datetime parser supports microseconds (up to 6 digits). We truncate extra
+    precision to microseconds for robust parsing.
+    """
+    raw = (pivot or "").strip()
+    m = _PIVOT_TS_RE.fullmatch(raw)
+    if not m:
+        raise ValueError(
+            "Invalid pivot timestamp. Use ISO 8601 format, e.g. 2026-03-07T12:43:36.970734572Z"
+        )
+
+    fraction = m.group("fraction") or ""
+    if fraction and len(fraction) > 7:  # '.' + up to 6 microsecond digits
+        fraction = fraction[:7]
+
+    tz = m.group("tz") or ""
+    if tz == "Z":
+        tz = "+00:00"
+
+    normalized = f"{m.group('base')}{fraction}{tz}"
+    dt = datetime.fromisoformat(normalized)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 # ---------------------------------------------------------------------------
 # Container operations
 # ---------------------------------------------------------------------------
@@ -282,8 +319,8 @@ def remove_container(container_id: str, force: bool = False, remove_volumes: boo
 def get_logs(
     container_id: str,
     tail: int = 100,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    since: Optional[str | int] = None,
+    until: Optional[str | int] = None,
     timestamps: bool = False,
 ) -> list[str]:
     client = _docker_client()
@@ -480,14 +517,14 @@ def global_search_logs(
     }
 
 
-def _pivot_window(pivot: str, window_seconds: int) -> tuple[str, str, str, str]:
+def _pivot_window(pivot: str, window_seconds: int) -> tuple[int, int, str, str]:
     """Return (since_unix, until_unix, since_iso, until_iso) for a pivot ± window."""
-    dt = datetime.fromisoformat(pivot.replace("Z", "+00:00"))
+    dt = _parse_pivot_datetime(pivot)
     since_dt = dt - timedelta(seconds=window_seconds)
     until_dt = dt + timedelta(seconds=window_seconds)
     return (
-        str(int(since_dt.timestamp())),
-        str(int(until_dt.timestamp())),
+        int(since_dt.timestamp()),
+        int(until_dt.timestamp()),
         since_dt.isoformat(),
         until_dt.isoformat(),
     )
