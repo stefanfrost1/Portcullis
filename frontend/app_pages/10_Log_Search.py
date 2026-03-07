@@ -1,12 +1,13 @@
 """
-Log Search page — global egrep-style search across all containers with
-click-to-expand context windows (single container or global).
+Logs page — browse container logs, search, and drill into context windows.
 
-UX flow:
-  1. Enter a regex pattern in the sidebar → hit Search
-  2. Results appear grouped by container, each matched line shown with its timestamp
-  3. Click "Context: this container" or "Context: all containers" on any line
-     to expand ±N seconds of logs around that exact moment
+Primary flow:
+  1. Click a container in the sidebar → its last N lines appear in the main area
+  2. Use the search bar at the top to filter within that container or globally
+  3. Click "🐳 Context" / "🌐 Global" on any search result line to open a
+     ±N second context window around that exact log timestamp
+  4. For the raw log view, copy a timestamp and paste it into the drill-down
+     bar at the bottom to open the same context window
 """
 
 import sys, os
@@ -15,8 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import streamlit as st
 from utils.api_client import EngineClient, get_config
 
-st.set_page_config(page_title="Log Search", page_icon="🔍", layout="wide")
-st.title("🔍 Log Search")
+st.set_page_config(page_title="Logs", page_icon="📋", layout="wide")
 
 
 @st.cache_resource
@@ -28,250 +28,377 @@ def get_client() -> EngineClient:
 c = get_client()
 
 # ---------------------------------------------------------------------------
-# Sidebar — search controls
+# Helpers
 # ---------------------------------------------------------------------------
 
-with st.sidebar:
-    st.header("Search")
-    pattern = st.text_input(
-        "Pattern (regex / egrep)",
-        value=st.session_state.get("log_pattern", ""),
-        placeholder="e.g.  error|warn|exception",
-        help="Python extended regex — same as egrep. Case-sensitive by default.",
-    )
-    case_insensitive = st.checkbox("Case-insensitive", value=False)
-    include_stopped = st.checkbox("Include stopped containers", value=False)
+def _state_icon(state: str) -> str:
+    return {"running": "🟢", "paused": "⏸️", "exited": "⭕", "dead": "💀"}.get(state, "⚫")
 
-    st.divider()
-    st.caption("Limits")
-    tail = st.slider("Lines to search per container", 100, 2000, 2000, step=100)
-    max_results = st.slider("Max matches per container", 10, 200, 100, step=10)
-
-    st.divider()
-    search_clicked = st.button("🔍 Search", type="primary", use_container_width=True)
-    if st.button("✕ Clear", use_container_width=True):
-        for key in ["log_pattern", "log_results", "log_summary", "ctx_state"]:
-            st.session_state.pop(key, None)
-        st.rerun()
-
-    st.divider()
-    st.header("Context window")
-    window_seconds = st.slider("Window ± seconds", 10, 300, 60, step=10)
-    st.caption(f"Clicking a context button shows ±{window_seconds}s ({window_seconds * 2}s total) around the matched line.")
-
-# ---------------------------------------------------------------------------
-# Run search
-# ---------------------------------------------------------------------------
-
-if search_clicked:
-    if not pattern.strip():
-        st.warning("Enter a search pattern first.")
-        st.stop()
-    with st.spinner("Searching all containers…"):
-        result = c.global_search_logs(
-            pattern=pattern.strip(),
-            tail=tail,
-            max_results_per_container=max_results,
-            case_insensitive=case_insensitive,
-            running_only=not include_stopped,
-            timestamps=False,   # display lines are stripped; timestamps come via matches[]
-        )
-    if result is None:
-        st.error(st.session_state.get("last_error", "Search failed."))
-        st.stop()
-    st.session_state["log_pattern"] = pattern.strip()
-    st.session_state["log_results"] = result
-    st.session_state.pop("ctx_state", None)   # clear any open context panel
-    st.rerun()
-
-result = st.session_state.get("log_results")
-
-# ---------------------------------------------------------------------------
-# No results yet — show hints
-# ---------------------------------------------------------------------------
-
-if result is None:
-    st.markdown(
-        """
-        **How to use:**
-        1. Type a regex pattern in the sidebar (egrep syntax — `error|warn`, `timeout`, `5[0-9]{2}`, etc.)
-        2. Hit **Search** — the API searches the last N log lines of every running container in parallel
-        3. Matches are returned grouped by container; click any line to open a ±context window
-
-        **Tips:**
-        - Use `|` for OR: `error|exception|fatal`
-        - Prefix with `(?i)` for inline case-insensitive: `(?i)warning`
-        - Use `since` / `until` filters via the API directly if you need a time-bounded search
-        """
-    )
-    st.stop()
-
-# ---------------------------------------------------------------------------
-# Summary bar
-# ---------------------------------------------------------------------------
-
-searched = result.get("containers_searched", 0)
-with_matches = result.get("containers_with_matches", 0)
-total = result.get("total_matched", 0)
-errors = result.get("errors", [])
-pat = result.get("pattern", "")
-
-col_a, col_b, col_c, col_d = st.columns(4)
-col_a.metric("Containers searched", searched)
-col_b.metric("Containers with matches", with_matches)
-col_c.metric("Total matches", total)
-col_d.metric("Errors", len(errors))
-
-if not result.get("results"):
-    st.info(f'No matches found for pattern **`{pat}`** across {searched} container(s).')
-    if errors:
-        with st.expander(f"⚠️ {len(errors)} container(s) had errors"):
-            for e in errors:
-                st.warning(f"`{e.get('container_name', e.get('container_id', '?'))}` — {e.get('error', '?')}")
-    st.stop()
-
-# ---------------------------------------------------------------------------
-# Context state management
-# ---------------------------------------------------------------------------
-# ctx_state = {"pivot": "...", "container_id": "...", "container_name": "...", "scope": "single"|"global"}
 
 def _set_ctx(pivot: str, container_id: str, container_name: str, scope: str):
     st.session_state["ctx_state"] = {
-        "pivot": pivot,
-        "container_id": container_id,
-        "container_name": container_name,
-        "scope": scope,
+        "pivot": pivot, "container_id": container_id,
+        "container_name": container_name, "scope": scope,
     }
 
-def _clear_ctx():
-    st.session_state.pop("ctx_state", None)
+
+# ---------------------------------------------------------------------------
+# Sidebar — container list + options
+# ---------------------------------------------------------------------------
+
+with st.sidebar:
+    include_stopped = st.checkbox("Show stopped containers", value=False)
+
+    all_containers = c.get_containers(all=True) or []
+    visible = all_containers if include_stopped else [
+        ct for ct in all_containers if ct.get("state") == "running"
+    ]
+    visible.sort(key=lambda ct: (0 if ct.get("state") == "running" else 1, ct.get("name", "")))
+
+    selected_id = st.session_state.get("selected_id", "")
+
+    st.caption(f"{len(visible)} container(s)")
+    for ct in visible:
+        cid = ct.get("id", "")
+        cname = ct.get("name", cid[:12])
+        state = ct.get("state", "")
+        label = f"{_state_icon(state)} {cname}"
+        is_selected = cid == selected_id
+        if st.button(label, key=f"sel_{cid}", use_container_width=True,
+                     type="primary" if is_selected else "secondary"):
+            if not is_selected:
+                st.session_state["selected_id"] = cid
+                st.session_state["selected_name"] = cname
+                # Clear stale state when switching containers
+                for k in ("logs_cache", "logs_cache_key", "search_results", "ctx_state"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+
+    if not visible:
+        st.info("No running containers." if not include_stopped else "No containers.")
+
+    st.divider()
+    st.caption("**Log options**")
+    tail = st.slider("Lines to load", 100, 2000, 500, step=100)
+    show_ts = st.checkbox("Show timestamps", value=True)
+    max_results = st.slider("Max search results", 20, 200, 100, step=10)
+
+    if st.button("↻ Refresh logs", use_container_width=True):
+        st.session_state.pop("logs_cache", None)
+        st.session_state.pop("logs_cache_key", None)
+        st.rerun()
+
+    st.divider()
+    st.caption("**Context window**")
+    window_seconds = st.slider("± seconds", 10, 300, 60, step=10)
+    st.caption(f"±{window_seconds}s = {window_seconds * 2}s total")
+
+# ---------------------------------------------------------------------------
+# No container selected
+# ---------------------------------------------------------------------------
+
+selected_id = st.session_state.get("selected_id", "")
+selected_name = st.session_state.get("selected_name", "")
+
+if not selected_id:
+    st.title("📋 Logs")
+    st.info("← Select a container from the sidebar to view its logs.")
+    st.stop()
+
+ct_info = next((ct for ct in all_containers if ct.get("id") == selected_id), None)
+
+# ---------------------------------------------------------------------------
+# Page header
+# ---------------------------------------------------------------------------
+
+h1, h2 = st.columns([8, 1])
+with h1:
+    state = (ct_info or {}).get("state", "")
+    image = (ct_info or {}).get("image", "—")
+    st.title(f"📋 {selected_name}")
+    st.caption(f"{_state_icon(state)} {state}  ·  `{image}`")
+with h2:
+    if st.button("↻", help="Refresh logs"):
+        st.session_state.pop("logs_cache", None)
+        st.session_state.pop("logs_cache_key", None)
+        st.rerun()
+
+# ---------------------------------------------------------------------------
+# SEARCH BAR — top of main area, secondary but always accessible
+# ---------------------------------------------------------------------------
+
+with st.container(border=True):
+    sc1, sc2, sc3, sc4, sc5 = st.columns([5, 1, 1, 1, 1])
+    with sc1:
+        search_pattern = st.text_input(
+            "Search pattern",
+            value=st.session_state.get("search_pattern", ""),
+            placeholder="regex pattern, e.g.  error|warn|timeout",
+            label_visibility="collapsed",
+            key="search_input",
+        )
+    with sc2:
+        case_i = st.checkbox("i", value=False, help="Case-insensitive")
+    with sc3:
+        search_this = st.button("🐳 This", use_container_width=True,
+                                help=f"Search within {selected_name}")
+    with sc4:
+        search_all = st.button("🌐 All", use_container_width=True,
+                               help="Search across all containers")
+    with sc5:
+        if st.session_state.get("search_results") and st.button("✕", use_container_width=True,
+                                                                   help="Clear search results"):
+            st.session_state.pop("search_results", None)
+            st.session_state.pop("search_pattern", None)
+            st.rerun()
+
+if search_this and search_pattern.strip():
+    with st.spinner(f"Searching {selected_name}…"):
+        res = c.search_container_logs(
+            selected_id, search_pattern.strip(),
+            tail=tail, max_results=max_results, case_insensitive=case_i,
+        )
+    if res is not None:
+        st.session_state["search_results"] = {"scope": "single", "data": res}
+        st.session_state["search_pattern"] = search_pattern.strip()
+        st.session_state.pop("ctx_state", None)
+        st.rerun()
+    else:
+        st.error(st.session_state.get("last_error", "Search failed."))
+
+if search_all and search_pattern.strip():
+    with st.spinner("Searching all containers…"):
+        res = c.global_search_logs(
+            search_pattern.strip(),
+            tail=tail, max_results_per_container=max_results,
+            case_insensitive=case_i, running_only=not include_stopped,
+        )
+    if res is not None:
+        st.session_state["search_results"] = {"scope": "global", "data": res}
+        st.session_state["search_pattern"] = search_pattern.strip()
+        st.session_state.pop("ctx_state", None)
+        st.rerun()
+    else:
+        st.error(st.session_state.get("last_error", "Search failed."))
+
+# ---------------------------------------------------------------------------
+# CONTEXT PANEL — shown when a drill-down is active
+# ---------------------------------------------------------------------------
 
 ctx = st.session_state.get("ctx_state")
-
-# ---------------------------------------------------------------------------
-# Context panel (shown above results when active)
-# ---------------------------------------------------------------------------
-
 if ctx:
     pivot = ctx["pivot"]
     scope = ctx["scope"]
     cid = ctx["container_id"]
     cname = ctx["container_name"]
 
-    scope_label = f"🐳 {cname}" if scope == "single" else "🌐 All containers"
-    st.subheader(f"Context window — {scope_label}")
-    st.caption(f"Pivot: `{pivot}`  ·  Window: ±{window_seconds}s")
+    with st.container(border=True):
+        hcol, bcol = st.columns([9, 1])
+        with hcol:
+            scope_label = f"🐳 {cname}" if scope == "single" else "🌐 All containers"
+            st.subheader(f"Context — {scope_label}")
+            st.caption(f"Pivot `{pivot}`  ·  ±{window_seconds}s")
+        with bcol:
+            if st.button("✕ Close", key="close_ctx"):
+                st.session_state.pop("ctx_state", None)
+                st.rerun()
 
-    with st.spinner("Fetching context…"):
-        if scope == "single":
-            ctx_data = c.get_logs_context(cid, pivot=pivot, window_seconds=window_seconds, timestamps=True)
+        with st.spinner("Fetching context…"):
+            if scope == "single":
+                ctx_data = c.get_logs_context(cid, pivot=pivot,
+                                              window_seconds=window_seconds, timestamps=True)
+            else:
+                ctx_data = c.global_logs_context(pivot=pivot, window_seconds=window_seconds,
+                                                  running_only=not include_stopped, timestamps=True)
+
+        if ctx_data is None:
+            st.error(st.session_state.get("last_error", "Failed to fetch context."))
+        elif scope == "single":
+            lines = ctx_data.get("lines", [])
+            since = ctx_data.get("since", "")[:19].replace("T", " ")
+            until = ctx_data.get("until", "")[:19].replace("T", " ")
+            st.caption(f"{since}  →  {until}  ·  {len(lines)} lines")
+            st.code("\n".join(lines) if lines else "(no lines in window)", language=None)
         else:
-            ctx_data = c.global_logs_context(pivot=pivot, window_seconds=window_seconds,
-                                              running_only=not include_stopped, timestamps=True)
+            cr_list = ctx_data.get("results", [])
+            cr_errors = ctx_data.get("errors", [])
+            since = ctx_data.get("since", "")[:19].replace("T", " ")
+            until = ctx_data.get("until", "")[:19].replace("T", " ")
+            st.caption(
+                f"{since}  →  {until}  ·  "
+                f"{ctx_data.get('containers_with_logs', 0)} / {ctx_data.get('containers_searched', 0)} containers"
+            )
+            if not cr_list:
+                st.info("No log output in this time window across any container.")
+            for cr in cr_list:
+                cr_name = cr.get("container_name", cr.get("container_id", "?"))
+                cr_lines = cr.get("lines", [])
+                # Expand the originating container by default, collapse others
+                expand = cr.get("container_id") == cid
+                with st.expander(f"🐳 {cr_name}  ({len(cr_lines)} lines)", expanded=expand):
+                    st.code("\n".join(cr_lines) if cr_lines else "(no lines)", language=None)
+            if cr_errors:
+                with st.expander(f"⚠️ {len(cr_errors)} error(s)"):
+                    for e in cr_errors:
+                        st.warning(f"`{e.get('container_name', '?')}` — {e.get('error', '?')}")
 
-    if ctx_data is None:
-        st.error(st.session_state.get("last_error", "Context fetch failed."))
-    elif scope == "single":
-        lines = ctx_data.get("lines", [])
-        since = ctx_data.get("since", "")[:19].replace("T", " ")
-        until = ctx_data.get("until", "")[:19].replace("T", " ")
-        st.caption(f"{since}  →  {until}  ·  {len(lines)} lines")
-        if lines:
-            # Highlight the pivot line
-            pivot_ts = pivot[:19]   # compare truncated
-            rendered = []
-            for ln in lines:
-                rendered.append(ln)
-            st.code("\n".join(rendered), language=None)
-        else:
-            st.info("No log lines in this time window.")
-    else:
-        ctx_results = ctx_data.get("results", [])
-        ctx_errors = ctx_data.get("errors", [])
-        since = ctx_data.get("since", "")[:19].replace("T", " ")
-        until = ctx_data.get("until", "")[:19].replace("T", " ")
-        st.caption(
-            f"{since}  →  {until}  ·  "
-            f"{ctx_data.get('containers_with_logs', 0)} / {ctx_data.get('containers_searched', 0)} containers had output"
-        )
-        if not ctx_results:
-            st.info("No log lines found in this time window across any container.")
-        for cr in ctx_results:
-            cr_name = cr.get("container_name", cr.get("container_id", "?"))
-            cr_lines = cr.get("lines", [])
-            with st.expander(f"🐳 {cr_name}  ({len(cr_lines)} lines)", expanded=True):
-                if cr_lines:
-                    st.code("\n".join(cr_lines), language=None)
-                else:
-                    st.write("No lines.")
-        if ctx_errors:
-            with st.expander(f"⚠️ {len(ctx_errors)} error(s)"):
-                for e in ctx_errors:
-                    st.warning(f"`{e.get('container_name', '?')}` — {e.get('error', '?')}")
+# ---------------------------------------------------------------------------
+# SEARCH RESULTS — shown when a search was run
+# ---------------------------------------------------------------------------
 
-    if st.button("✕ Close context", key="close_ctx"):
-        _clear_ctx()
-        st.rerun()
+search_state = st.session_state.get("search_results")
+if search_state:
+    scope = search_state["scope"]
+    data = search_state["data"]
+    pat = st.session_state.get("search_pattern", "")
 
     st.divider()
 
-# ---------------------------------------------------------------------------
-# Results — grouped by container
-# ---------------------------------------------------------------------------
+    if scope == "single":
+        matches = data.get("matches", [])
+        total = data.get("total_matched", len(matches))
+        truncated = data.get("truncated", False)
+        trunc_note = f"  _(showing {len(matches)} of {total})_" if truncated else ""
 
-st.subheader(f"Matches for `{pat}`")
+        st.subheader(f"Search results — `{pat}` in {selected_name}{trunc_note}")
 
-if errors:
-    with st.expander(f"⚠️ {len(errors)} container(s) had errors — click to expand"):
-        for e in errors:
-            st.warning(f"`{e.get('container_name', e.get('container_id', '?'))}` — {e.get('error', '?')}")
-
-for container_result in result.get("results", []):
-    cid = container_result.get("container_id", "")
-    cname = container_result.get("container_name", cid[:12])
-    matches = container_result.get("matches", [])
-    match_count = container_result.get("match_count", len(matches))
-    truncated = container_result.get("truncated", False)
-
-    header = f"🐳 **{cname}** — {match_count} match{'es' if match_count != 1 else ''}"
-    if truncated:
-        header += f"  _(showing first {len(matches)}, truncated)_"
-
-    with st.expander(header, expanded=True):
         if not matches:
-            st.write("No structured match data.")
-            continue
+            st.info("No matches.")
+        else:
+            for i, m in enumerate(matches):
+                ts = m.get("timestamp")
+                line = m.get("line", "")
+                short_ts = ts[11:23] if ts and len(ts) > 11 else (ts or "")
 
-        for i, m in enumerate(matches):
-            ts = m.get("timestamp")       # ISO 8601 or None
-            line = m.get("line", "")
+                rc1, rc2, rc3 = st.columns([2, 7, 3])
+                with rc1:
+                    st.code(short_ts or "—", language=None)
+                with rc2:
+                    st.code(line, language=None)
+                with rc3:
+                    if ts:
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if st.button("🐳", key=f"cs_{i}",
+                                         help=f"±{window_seconds}s in {selected_name}"):
+                                _set_ctx(ts, selected_id, selected_name, "single")
+                                st.rerun()
+                        with b2:
+                            if st.button("🌐", key=f"cg_{i}",
+                                         help=f"±{window_seconds}s across all containers"):
+                                _set_ctx(ts, selected_id, selected_name, "global")
+                                st.rerun()
+                    else:
+                        st.caption("no ts")
 
-            # Row: timestamp chip | log line | context buttons
-            col_ts, col_line, col_btn = st.columns([2, 7, 3])
+    else:  # global
+        total = data.get("total_matched", 0)
+        searched = data.get("containers_searched", 0)
+        with_matches = data.get("containers_with_matches", 0)
+        errors = data.get("errors", [])
 
-            with col_ts:
-                if ts:
-                    # Show HH:MM:SS.mmm for compactness
-                    short_ts = ts[11:23] if len(ts) > 11 else ts
-                    st.code(short_ts, language=None)
-                else:
-                    st.caption("no timestamp")
+        mc1, mc2, mc3, mc4 = st.columns(4)
+        mc1.metric("Searched", searched)
+        mc2.metric("With matches", with_matches)
+        mc3.metric("Total matches", total)
+        mc4.metric("Errors", len(errors))
 
-            with col_line:
-                st.code(line, language=None)
+        st.subheader(f"Global search — `{pat}`")
 
-            with col_btn:
-                if ts:
-                    b1, b2 = st.columns(2)
-                    with b1:
-                        if st.button("🐳 Context", key=f"ctx_single_{cid}_{i}",
-                                     help=f"Show ±{window_seconds}s from this line in {cname}"):
-                            _set_ctx(ts, cid, cname, "single")
-                            st.rerun()
-                    with b2:
-                        if st.button("🌐 Global", key=f"ctx_global_{cid}_{i}",
-                                     help=f"Show ±{window_seconds}s from this line across all containers"):
-                            _set_ctx(ts, cid, cname, "global")
-                            st.rerun()
-                else:
-                    st.caption("No pivot — enable timestamps in API call")
+        if errors:
+            with st.expander(f"⚠️ {len(errors)} error(s)"):
+                for e in errors:
+                    st.warning(f"`{e.get('container_name', '?')}` — {e.get('error', '?')}")
+
+        if not data.get("results"):
+            st.info(f"No matches found for `{pat}`.")
+        else:
+            for cr in data.get("results", []):
+                cid = cr.get("container_id", "")
+                cname = cr.get("container_name", cid[:12])
+                matches = cr.get("matches", [])
+                match_count = cr.get("match_count", len(matches))
+                truncated = cr.get("truncated", False)
+                trunc_note = f"  _(showing {len(matches)} of {match_count})_" if truncated else ""
+
+                # Auto-expand the currently viewed container's results
+                with st.expander(
+                    f"🐳 **{cname}** — {match_count} match{'es' if match_count != 1 else ''}{trunc_note}",
+                    expanded=(cid == selected_id),
+                ):
+                    for i, m in enumerate(matches):
+                        ts = m.get("timestamp")
+                        line = m.get("line", "")
+                        short_ts = ts[11:23] if ts and len(ts) > 11 else (ts or "")
+
+                        rc1, rc2, rc3 = st.columns([2, 7, 3])
+                        with rc1:
+                            st.code(short_ts or "—", language=None)
+                        with rc2:
+                            st.code(line, language=None)
+                        with rc3:
+                            if ts:
+                                b1, b2 = st.columns(2)
+                                with b1:
+                                    if st.button("🐳", key=f"gcs_{cid}_{i}",
+                                                 help=f"±{window_seconds}s in {cname}"):
+                                        _set_ctx(ts, cid, cname, "single")
+                                        st.rerun()
+                                with b2:
+                                    if st.button("🌐", key=f"gcg_{cid}_{i}",
+                                                 help=f"±{window_seconds}s globally"):
+                                        _set_ctx(ts, cid, cname, "global")
+                                        st.rerun()
+
+# ---------------------------------------------------------------------------
+# LOG VIEWER — primary content
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.subheader("Logs")
+
+# Cache logs per container+tail+timestamps combo to avoid re-fetching on every widget touch
+cache_key = f"{selected_id}_{tail}_{show_ts}"
+if st.session_state.get("logs_cache_key") != cache_key:
+    with st.spinner("Loading logs…"):
+        raw = c.get_container_logs(selected_id, tail=tail, timestamps=show_ts)
+    if raw is None:
+        st.error(st.session_state.get("last_error", "Failed to load logs."))
+        st.stop()
+    lines = raw.get("lines", []) if isinstance(raw, dict) else (raw or [])
+    st.session_state["logs_cache"] = lines
+    st.session_state["logs_cache_key"] = cache_key
+
+lines = st.session_state.get("logs_cache", [])
+st.caption(f"{len(lines)} lines  ·  last {tail} loaded")
+
+if lines:
+    st.code("\n".join(lines), language=None)
+else:
+    st.info("No log output.")
+
+# ---------------------------------------------------------------------------
+# DRILL-DOWN BAR — paste a timestamp from the log above to open context
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.caption("**Drill-down:** copy a timestamp from the log above, paste it here, then choose the context scope.")
+
+dc1, dc2, dc3 = st.columns([5, 1, 1])
+with dc1:
+    pivot_input = st.text_input(
+        "Timestamp",
+        placeholder="2024-01-15T10:23:45.123456789Z",
+        label_visibility="collapsed",
+        key="drill_pivot",
+    )
+with dc2:
+    if st.button("🐳 Container", use_container_width=True, disabled=not pivot_input.strip(),
+                 help=f"Open ±{window_seconds}s context for {selected_name}"):
+        _set_ctx(pivot_input.strip(), selected_id, selected_name, "single")
+        st.rerun()
+with dc3:
+    if st.button("🌐 Global", use_container_width=True, disabled=not pivot_input.strip(),
+                 help=f"Open ±{window_seconds}s context across all containers"):
+        _set_ctx(pivot_input.strip(), selected_id, selected_name, "global")
+        st.rerun()
