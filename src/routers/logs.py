@@ -241,6 +241,37 @@ def get_logs_context(
 
 
 # ---------------------------------------------------------------------------
+# Global log fetch (all containers, no filter)
+# ---------------------------------------------------------------------------
+
+@global_router.get(
+    "",
+    summary="Fetch logs from all containers",
+    description=(
+        "Return the last `tail` lines from every (running) container in parallel. "
+        "Results are sorted by container name. Use the per-container `lines` arrays "
+        "to render a merged timeline on the client by sorting on the Docker timestamp prefix. "
+        "Pass `running_only=false` to also include stopped containers."
+    ),
+    response_model=APIResponse,
+)
+def get_all_logs(
+    tail: int = Query(100, ge=1, le=2000, description="Lines per container"),
+    timestamps: bool = Query(True, description="Include Docker timestamps in each line"),
+    running_only: bool = Query(True, description="Only fetch from running containers"),
+):
+    try:
+        result = ds.get_all_container_logs(
+            tail=tail,
+            timestamps=timestamps,
+            running_only=running_only,
+        )
+        return APIResponse(data=result)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, "global")
+
+
+# ---------------------------------------------------------------------------
 # Global log search (all containers, egrep-style)
 # ---------------------------------------------------------------------------
 

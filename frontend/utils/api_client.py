@@ -440,6 +440,18 @@ class EngineClient:
     # Logs
     # ------------------------------------------------------------------
 
+    def get_all_logs(
+        self,
+        tail: int = 100,
+        timestamps: bool = True,
+        running_only: bool = True,
+    ) -> dict | None:
+        return self._get("/logs", params={
+            "tail": tail,
+            "timestamps": str(timestamps).lower(),
+            "running_only": str(running_only).lower(),
+        })
+
     def get_container_logs(
         self,
         container_id: str,

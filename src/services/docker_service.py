@@ -420,6 +420,55 @@ _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT = 10.0
 _GLOBAL_SEARCH_MAX_WORKERS = 10
 
 
+def get_all_container_logs(
+    tail: int = 100,
+    timestamps: bool = True,
+    running_only: bool = True,
+) -> dict:
+    """Fetch logs from all (running) containers in parallel and return per-container results."""
+    client = _docker_client()
+    containers = client.containers.list(all=not running_only)
+
+    def _fetch(c) -> dict:
+        lines = get_logs(c.id, tail=tail, timestamps=timestamps)
+        return {
+            "container_id": c.id,
+            "container_name": c.name.lstrip("/"),
+            "lines": lines,
+            "count": len(lines),
+        }
+
+    results: list[dict] = []
+    errors: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+        futures = {pool.submit(_fetch, c): c for c in containers}
+        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
+            c = futures[future]
+            try:
+                results.append(future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT))
+            except FutureTimeoutError:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": "fetch timeout",
+                })
+            except Exception as exc:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": str(exc),
+                })
+
+    results.sort(key=lambda r: r["container_name"])
+    return {
+        "containers_fetched": len(results),
+        "containers_searched": len(containers),
+        "containers": results,
+        "errors": errors,
+    }
+
+
 def global_search_logs(
     pattern: str,
     tail: int = 2000,
