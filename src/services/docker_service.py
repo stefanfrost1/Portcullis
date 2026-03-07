@@ -26,6 +26,7 @@ from src.models.schemas import (
     ImageDetail,
     ImageSummary,
     LogSearchResult,
+    GlobalLogSearchResult,
     NetworkSummary,
     SystemInfo,
     VolumeSummary,
@@ -344,6 +345,96 @@ def search_logs(
         "matched_lines": matched[:max_results],
         "total_matched": len(matched),
         "truncated": truncated,
+    }
+
+
+_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT = 10.0
+_GLOBAL_SEARCH_MAX_WORKERS = 10
+
+
+def global_search_logs(
+    pattern: str,
+    tail: int = 2000,
+    max_results_per_container: int = 200,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
+    timestamps: bool = False,
+    case_insensitive: bool = False,
+    running_only: bool = True,
+) -> dict:
+    """
+    Search logs across all (running) containers in parallel using a regex pattern.
+
+    Each container is searched independently using a thread pool. Returns matches
+    grouped by container; only containers with at least one match are included in
+    `results`. Containers that fail or time out are recorded in `errors`.
+    """
+    if len(pattern) > _MAX_PATTERN_LENGTH:
+        raise ValueError(f"Regex pattern too long (max {_MAX_PATTERN_LENGTH} characters)")
+
+    tail = min(tail, _MAX_SEARCH_TAIL)
+
+    flags = re.IGNORECASE if case_insensitive else 0
+    try:
+        regex = re.compile(pattern, flags)
+    except re.error as exc:
+        raise ValueError(f"Invalid regex pattern: {exc}") from exc
+
+    client = _docker_client()
+    containers = client.containers.list(all=not running_only)
+
+    def _search_one(c) -> dict:
+        lines = get_logs(
+            c.id,
+            tail=tail,
+            since=since,
+            until=until,
+            timestamps=timestamps,
+        )
+        matched = [line for line in lines if regex.search(line)]
+        truncated = len(matched) > max_results_per_container
+        return {
+            "container_id": c.id,
+            "container_name": c.name.lstrip("/"),
+            "matched_lines": matched[:max_results_per_container],
+            "match_count": len(matched),
+            "truncated": truncated,
+        }
+
+    results: list[dict] = []
+    errors: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+        futures = {pool.submit(_search_one, c): c for c in containers}
+        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
+            c = futures[future]
+            try:
+                result = future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT)
+                if result["match_count"] > 0:
+                    results.append(result)
+            except FutureTimeoutError:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": "search timeout",
+                })
+            except Exception as exc:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": str(exc),
+                })
+
+    results.sort(key=lambda r: r["container_name"])
+    total_matched = sum(r["match_count"] for r in results)
+
+    return {
+        "pattern": pattern,
+        "containers_searched": len(containers),
+        "containers_with_matches": len(results),
+        "total_matched": total_matched,
+        "results": results,
+        "errors": errors,
     }
 
 

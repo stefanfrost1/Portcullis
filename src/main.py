@@ -215,6 +215,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 app.include_router(containers.router, prefix=API_PREFIX)
 app.include_router(logs.router, prefix=API_PREFIX)        # /api/v1/containers/{id}/logs/…
+app.include_router(logs.global_router, prefix=API_PREFIX) # /api/v1/logs/search
 app.include_router(images.router, prefix=API_PREFIX)
 app.include_router(networks.router, prefix=API_PREFIX)
 app.include_router(volumes.router, prefix=API_PREFIX)
