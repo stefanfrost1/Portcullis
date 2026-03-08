@@ -1,5 +1,5 @@
 """
-MyEngine Dashboard — Overview page.
+Portcullis Dashboard — Overview page.
 
 Shows combined Docker + Redis top-level metrics from GET /api/v1/overview.
 Auto-refreshes every REFRESH_INTERVAL seconds (default 10).
@@ -14,7 +14,7 @@ from utils.formatting import bytes_to_human, health_badge
 
 
 st.set_page_config(
-    page_title="MyEngine Dashboard",
+    page_title="Portcullis Dashboard",
     page_icon="🐳",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -47,7 +47,7 @@ st_autorefresh(interval=refresh_ms, key="dashboard_refresh")
 # Page header
 # ---------------------------------------------------------------------------
 
-st.title("🐳 MyEngine Dashboard")
+st.title("🐳 Portcullis Dashboard")
 
 c = client()
 
