@@ -1,5 +1,5 @@
 """
-MyEngineAPI — Docker + Redis management bridge service.
+Portcullis — Docker + Redis management bridge service.
 
 Provides a REST + WebSocket API for the UI to interact with:
   - The Docker daemon (containers, images, networks, volumes, logs)
@@ -36,7 +36,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
-logger = logging.getLogger("myengineapi")
+logger = logging.getLogger("portcullis")
 
 # Quieten noisy third-party loggers
 logging.getLogger("docker").setLevel(logging.WARNING)
@@ -50,7 +50,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: warn if external services unreachable (don't block startup)
-    logger.info("MyEngineAPI starting up…")
+    logger.info("Portcullis starting up…")
     try:
         info = ds.get_system_info()
         logger.info("Docker daemon OK (version %s)", info.get("docker_version", "?"))
@@ -66,7 +66,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("MyEngineAPI shutting down…")
+    logger.info("Portcullis shutting down…")
     ds.close_docker_client()
     rs.close_all_pools()
     logger.info("Shutdown complete")
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="MyEngineAPI — Docker & Redis Bridge",
+    title="Portcullis — Docker & Redis Bridge",
     description=(
         "Shields the UI from direct Docker socket and Redis access. "
         "Exposes container management, log streaming, image/network/volume ops, "

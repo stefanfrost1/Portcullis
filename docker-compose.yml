@@ -1,5 +1,5 @@
 # ============================================================
-# docker-compose.yml — MyEngineAPI + Streamlit frontend + Redis
+# docker-compose.yml — Portcullis + Streamlit frontend + Redis
 #
 # Quickstart (all three services):
 #   docker compose up --build
@@ -26,22 +26,22 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - MYENGINE_URL=http://myengineapi:8000
+      - MYENGINE_URL=http://portcullis:8000
       - MYENGINE_API_KEY=${API_KEY:-}
       - REFRESH_INTERVAL=${REFRESH_INTERVAL:-10}
     depends_on:
-      - myengineapi
+      - portcullis
     networks:
       - internal
 
   # ------------------------------------------------------------------
   # FastAPI backend
   # ------------------------------------------------------------------
-  myengineapi:
+  portcullis:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: myengineapi
+    container_name: portcullis
     # Needed for Docker socket access inside container on Windows/WSL hosts.
     user: "0:0"
     restart: unless-stopped

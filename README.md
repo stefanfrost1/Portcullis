@@ -1,11 +1,11 @@
-# MyEngineAPI + Streamlit Dashboard
+# Portcullis + Streamlit Dashboard
 
 A Docker and Redis management platform consisting of:
 
 | Service | Description | Default URL |
 |---|---|---|
 | **Streamlit UI** | Multi-page dashboard | http://localhost:8501 |
-| **MyEngineAPI** | FastAPI REST backend | http://localhost:8000/api/v1/docs |
+| **Portcullis** | FastAPI REST backend | http://localhost:8000/api/v1/docs |
 | **Redis** | Data store (internal) | localhost:6379 (not exposed) |
 
 ---
@@ -124,7 +124,7 @@ pip install -r requirements.txt
 MYENGINE_URL=http://localhost:8000 streamlit run app.py
 ```
 
-### Backend (MyEngineAPI)
+### Backend (Portcullis)
 
 | Variable | Default | Description |
 |---|---|---|
@@ -175,9 +175,9 @@ Redis is configured with AOF persistence (`--appendonly yes`) and a named volume
 ## Project structure
 
 ```
-MyEngineAPI/
-├── docker-compose.yml       # All three services: frontend, myengineapi, redis
-├── Dockerfile               # MyEngineAPI backend image
+Portcullis/
+├── docker-compose.yml       # All three services: frontend, portcullis, redis
+├── Dockerfile               # Portcullis backend image
 ├── requirements.txt         # Backend Python dependencies
 ├── src/                     # FastAPI backend source
 │   ├── main.py

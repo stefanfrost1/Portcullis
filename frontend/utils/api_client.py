@@ -1,5 +1,5 @@
 """
-EngineClient — thin HTTP wrapper around MyEngineAPI.
+EngineClient — thin HTTP wrapper around Portcullis.
 
 All public methods:
 - Unwrap the {"data": ..., "error": ...} envelope.
@@ -49,7 +49,7 @@ def get_config() -> dict:
 # ---------------------------------------------------------------------------
 
 class EngineClient:
-    """HTTP client for MyEngineAPI."""
+    """HTTP client for Portcullis."""
 
     def __init__(self, base_url: str, api_key: str | None = None) -> None:
         self._base = base_url.rstrip("/") + "/api/v1"
