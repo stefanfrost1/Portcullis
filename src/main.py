@@ -1,11 +1,13 @@
 """
-MyEngineAPI — Docker + Redis management bridge service.
+Portcullis — Docker + Redis management bridge service.
 
 Provides a REST + WebSocket API for the UI to interact with:
   - The Docker daemon (containers, images, networks, volumes, logs)
   - Redis (key browser, server ops, pub/sub, monitor, analysis)
 
 Neither the Docker socket nor Redis is exposed directly to the UI.
+Access is gated by role (admin / developer / reader) derived from the
+X-User-Groups header injected by the Caddy reverse proxy.
 
 Base path: /api/v1
 """
@@ -17,11 +19,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.config import settings
 from src.routers import containers, logs, images, networks, volumes, system
 from src.routers import redis_keys, redis_server, redis_queues, overview
+from src.routers._auth import filter_schema_for_role, get_role
 from src.services import docker_service as ds
 from src.services import redis_service as rs
 
@@ -36,7 +40,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
-logger = logging.getLogger("myengineapi")
+logger = logging.getLogger("portcullis")
 
 # Quieten noisy third-party loggers
 logging.getLogger("docker").setLevel(logging.WARNING)
@@ -50,7 +54,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: warn if external services unreachable (don't block startup)
-    logger.info("MyEngineAPI starting up…")
+    logger.info("Portcullis starting up…")
     try:
         info = ds.get_system_info()
         logger.info("Docker daemon OK (version %s)", info.get("docker_version", "?"))
@@ -66,7 +70,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("MyEngineAPI shutting down…")
+    logger.info("Portcullis shutting down…")
     ds.close_docker_client()
     rs.close_all_pools()
     logger.info("Shutdown complete")
@@ -77,19 +81,23 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="MyEngineAPI — Docker & Redis Bridge",
+    title="Portcullis",
     description=(
-        "Shields the UI from direct Docker socket and Redis access. "
+        "The iron gate between your UI and the Docker daemon + Redis. "
         "Exposes container management, log streaming, image/network/volume ops, "
         "and a full Redis operations API (key browser, server info, pub/sub, "
         "MONITOR stream, keyspace analysis, slow log, memory stats, and more). "
         "Includes a single-call `/overview` endpoint for monitoring dashboards "
-        "and queue-depth monitoring for List and Stream keys."
+        "and queue-depth monitoring for List and Stream keys.\n\n"
+        "Access is role-gated via the `X-User-Groups` header injected by Caddy: "
+        "**admin** users see and call everything; **non-admin** users see only "
+        "the endpoints they are permitted to use."
     ),
     version="3.1.0",
-    docs_url=f"{API_PREFIX}/docs",
-    redoc_url=f"{API_PREFIX}/redoc",
-    openapi_url=f"{API_PREFIX}/openapi.json",
+    # Docs are served by custom role-aware endpoints below
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     lifespan=lifespan,
 )
 
@@ -228,6 +236,41 @@ app.include_router(redis_queues.router, prefix=API_PREFIX)  # queue depth monito
 
 # Aggregate overview — /api/v1/overview
 app.include_router(overview.router, prefix=API_PREFIX)
+
+
+# ---------------------------------------------------------------------------
+# Role-aware OpenAPI schema + interactive docs
+# ---------------------------------------------------------------------------
+
+@app.get(f"{API_PREFIX}/openapi.json", include_in_schema=False)
+async def openapi_json(request: Request) -> JSONResponse:
+    """Serve a role-filtered OpenAPI schema.
+
+    Caddy injects X-User-Groups on every request so the schema returned to
+    Swagger UI automatically reflects what the caller is permitted to use.
+    """
+    groups = request.headers.get("x-user-groups", "")
+    role = get_role(groups)
+    schema = filter_schema_for_role(app.openapi(), role)
+    return JSONResponse(schema)
+
+
+@app.get(f"{API_PREFIX}/docs", include_in_schema=False)
+async def swagger_ui() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url=f"{API_PREFIX}/openapi.json",
+        title="Portcullis — API Docs",
+        swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
+    )
+
+
+@app.get(f"{API_PREFIX}/redoc", include_in_schema=False)
+async def redoc_ui() -> HTMLResponse:
+    return get_redoc_html(
+        openapi_url=f"{API_PREFIX}/openapi.json",
+        title="Portcullis — ReDoc",
+        redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
+    )
 
 
 # ---------------------------------------------------------------------------
