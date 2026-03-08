@@ -1,5 +1,5 @@
 """
-Formatting utilities for the MyEngineAPI Streamlit frontend.
+Formatting utilities for the Portcullis Streamlit frontend.
 """
 
 
