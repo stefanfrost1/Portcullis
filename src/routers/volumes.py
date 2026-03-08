@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from docker.errors import NotFound, APIError
 
 from src.models.schemas import APIResponse, VolumeCreateRequest
+from src.routers._auth import require_admin
 from src.services import docker_service as ds
 
-router = APIRouter(prefix="/volumes", tags=["Volumes"])
+router = APIRouter(prefix="/volumes", tags=["Volumes"], dependencies=[Depends(require_admin)])
 
 
 @router.get("", summary="List volumes", response_model=APIResponse)

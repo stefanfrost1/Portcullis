@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from docker.errors import NotFound, ImageNotFound, APIError, BuildError
 
 from src.models.schemas import APIResponse, ImagePullRequest
+from src.routers._auth import require_admin
 from src.services import docker_service as ds
 
-router = APIRouter(prefix="/images", tags=["Images"])
+router = APIRouter(prefix="/images", tags=["Images"], dependencies=[Depends(require_admin)])
 
 
 @router.get("", summary="List images", response_model=APIResponse)

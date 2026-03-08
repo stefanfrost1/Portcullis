@@ -29,7 +29,7 @@ Note: keys containing "/" must be URL-encoded (%2F) by the client.
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from redis.exceptions import RedisError, ResponseError
 
 from src.models.redis_schemas import (
@@ -47,6 +47,7 @@ from src.models.redis_schemas import (
     RedisZSetAddRequest,
 )
 from src.models.schemas import APIResponse
+from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
 router = APIRouter(prefix="/redis", tags=["Redis — Keys"])
@@ -104,7 +105,7 @@ def count_keys(db: int = Query(0, ge=0, le=15)):
     summary="Delete multiple keys (DEL)",
     response_model=APIResponse,
 )
-def bulk_delete(body: RedisBulkDeleteRequest, db: int = Query(0, ge=0, le=15)):
+def bulk_delete(body: RedisBulkDeleteRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.delete_keys(body.keys, db))
     except RedisError as exc:
@@ -147,7 +148,7 @@ def get_key(
     description="Replaces the key entirely. Supports string, hash, list, set, zset.",
     response_model=APIResponse,
 )
-def set_key(key: str, body: RedisKeySetRequest, db: int = Query(0, ge=0, le=15)):
+def set_key(key: str, body: RedisKeySetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.set_key(key, body.type, body.value, body.ttl, db))
     except ValueError as exc:
@@ -161,7 +162,7 @@ def set_key(key: str, body: RedisKeySetRequest, db: int = Query(0, ge=0, le=15))
     summary="Delete a key (DEL)",
     response_model=APIResponse,
 )
-def delete_key(key: str, db: int = Query(0, ge=0, le=15)):
+def delete_key(key: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.delete_keys([key], db)
         if result["deleted"] == 0:
@@ -190,7 +191,7 @@ def key_ttl(key: str, db: int = Query(0, ge=0, le=15)):
     summary="Set TTL (EXPIRE). Pass ttl <= 0 to call PERSIST.",
     response_model=APIResponse,
 )
-def key_expire(key: str, body: RedisExpireRequest, db: int = Query(0, ge=0, le=15)):
+def key_expire(key: str, body: RedisExpireRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.expire_key(key, body.ttl, db))
     except RedisError as exc:
@@ -198,7 +199,7 @@ def key_expire(key: str, body: RedisExpireRequest, db: int = Query(0, ge=0, le=1
 
 
 @router.post("/keys/{key}/persist", summary="Remove TTL (PERSIST)", response_model=APIResponse)
-def key_persist(key: str, db: int = Query(0, ge=0, le=15)):
+def key_persist(key: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.persist_key(key, db))
     except RedisError as exc:
@@ -238,7 +239,7 @@ def key_dump(key: str, db: int = Query(0, ge=0, le=15)):
 # ===========================================================================
 
 @router.post("/keys/{key}/rename", summary="Rename key (RENAME / RENAMENX)", response_model=APIResponse)
-def key_rename(key: str, body: RedisRenameRequest, db: int = Query(0, ge=0, le=15)):
+def key_rename(key: str, body: RedisRenameRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.rename_key(key, body.new_key, nx=body.nx, db=db))
     except ResponseError as exc:
@@ -248,7 +249,7 @@ def key_rename(key: str, body: RedisRenameRequest, db: int = Query(0, ge=0, le=1
 
 
 @router.post("/keys/{key}/copy", summary="Copy key (COPY)", response_model=APIResponse)
-def key_copy(key: str, body: RedisCopyRequest, db: int = Query(0, ge=0, le=15)):
+def key_copy(key: str, body: RedisCopyRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.copy_key(
             key, body.destination,
@@ -294,7 +295,7 @@ def hash_get(key: str, field: str, db: int = Query(0, ge=0, le=15)):
 
 
 @router.post("/keys/{key}/hash/{field}", summary="HSET field", response_model=APIResponse)
-def hash_set(key: str, field: str, body: RedisHashFieldRequest, db: int = Query(0, ge=0, le=15)):
+def hash_set(key: str, field: str, body: RedisHashFieldRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.hash_set_field(key, field, body.value, db))
     except RedisError as exc:
@@ -302,7 +303,7 @@ def hash_set(key: str, field: str, body: RedisHashFieldRequest, db: int = Query(
 
 
 @router.delete("/keys/{key}/hash/{field}", summary="HDEL field", response_model=APIResponse)
-def hash_del(key: str, field: str, db: int = Query(0, ge=0, le=15)):
+def hash_del(key: str, field: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.hash_del_field(key, field, db)
         if not result["deleted"]:
@@ -336,7 +337,7 @@ def list_get(
 
 
 @router.post("/keys/{key}/list/push", summary="LPUSH / RPUSH", response_model=APIResponse)
-def list_push(key: str, body: RedisListPushRequest, db: int = Query(0, ge=0, le=15)):
+def list_push(key: str, body: RedisListPushRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.list_push(key, body.values, body.direction, db))
     except RedisError as exc:
@@ -348,6 +349,7 @@ def list_pop(
     key: str,
     direction: str = Query("right", description="left | right"),
     db: int = Query(0, ge=0, le=15),
+    _: None = Depends(require_admin),
 ):
     try:
         return APIResponse(data=rs.list_pop(key, direction, db))
@@ -356,7 +358,7 @@ def list_pop(
 
 
 @router.post("/keys/{key}/list/remove", summary="LREM — remove by value", response_model=APIResponse)
-def list_remove(key: str, body: RedisListRemoveRequest, db: int = Query(0, ge=0, le=15)):
+def list_remove(key: str, body: RedisListRemoveRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.list_remove(key, body.value, body.count, db))
     except RedisError as exc:
@@ -364,7 +366,7 @@ def list_remove(key: str, body: RedisListRemoveRequest, db: int = Query(0, ge=0,
 
 
 @router.put("/keys/{key}/list/{index}", summary="LSET — set item at index", response_model=APIResponse)
-def list_set(key: str, index: int, body: RedisListSetRequest, db: int = Query(0, ge=0, le=15)):
+def list_set(key: str, index: int, body: RedisListSetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.list_set_index(key, index, body.value, db))
     except ResponseError as exc:
@@ -398,7 +400,7 @@ def set_random(
 
 
 @router.post("/keys/{key}/set/add", summary="SADD", response_model=APIResponse)
-def set_add(key: str, body: RedisSetAddRequest, db: int = Query(0, ge=0, le=15)):
+def set_add(key: str, body: RedisSetAddRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.set_add(key, body.members, db))
     except RedisError as exc:
@@ -414,7 +416,7 @@ def set_ismember(key: str, member: str, db: int = Query(0, ge=0, le=15)):
 
 
 @router.delete("/keys/{key}/set/{member}", summary="SREM", response_model=APIResponse)
-def set_remove(key: str, member: str, db: int = Query(0, ge=0, le=15)):
+def set_remove(key: str, member: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.set_remove(key, member, db)
         if not result["removed"]:
@@ -468,7 +470,7 @@ def zset_range_by_score(
 
 
 @router.post("/keys/{key}/zset/add", summary="ZADD", response_model=APIResponse)
-def zset_add(key: str, body: RedisZSetAddRequest, db: int = Query(0, ge=0, le=15)):
+def zset_add(key: str, body: RedisZSetAddRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.zset_add(key, body.members, nx=body.nx, xx=body.xx, db=db))
     except RedisError as exc:
@@ -484,7 +486,7 @@ def zset_score(key: str, member: str, db: int = Query(0, ge=0, le=15)):
 
 
 @router.delete("/keys/{key}/zset/{member}", summary="ZREM", response_model=APIResponse)
-def zset_remove(key: str, member: str, db: int = Query(0, ge=0, le=15)):
+def zset_remove(key: str, member: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.zset_remove(key, member, db)
         if not result["removed"]:
@@ -527,7 +529,7 @@ def stream_info(key: str, db: int = Query(0, ge=0, le=15)):
 
 
 @router.post("/keys/{key}/stream/add", summary="XADD — append stream entry", response_model=APIResponse)
-def stream_add(key: str, body: RedisStreamAddRequest, db: int = Query(0, ge=0, le=15)):
+def stream_add(key: str, body: RedisStreamAddRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.stream_add(key, body.fields, body.entry_id, db))
     except RedisError as exc:
@@ -535,7 +537,7 @@ def stream_add(key: str, body: RedisStreamAddRequest, db: int = Query(0, ge=0, l
 
 
 @router.delete("/keys/{key}/stream/{entry_id}", summary="XDEL — remove stream entry", response_model=APIResponse)
-def stream_delete(key: str, entry_id: str, db: int = Query(0, ge=0, le=15)):
+def stream_delete(key: str, entry_id: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.stream_delete_entry(key, entry_id, db))
     except RedisError as exc:

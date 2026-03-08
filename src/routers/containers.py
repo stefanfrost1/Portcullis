@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from docker.errors import DockerException
 
 from src.models.schemas import (
@@ -9,6 +9,7 @@ from src.models.schemas import (
     ContainerStats,
     ContainerSummary,
 )
+from src.routers._auth import require_admin
 from src.routers._docker_errors import handle_docker_exc
 from src.services import docker_service as ds
 
@@ -91,7 +92,7 @@ def compose_groups():
     summary="Inspect container",
     response_model=APIResponse,
 )
-def get_container(container_id: str):
+def get_container(container_id: str, _: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.get_container(container_id))
     except DockerException as exc:
@@ -141,6 +142,7 @@ def start_container(container_id: str):
 def stop_container(
     container_id: str,
     timeout: int = Query(10, description="Seconds to wait before killing"),
+    _: None = Depends(require_admin),
 ):
     logger.info("Stopping container %s", container_id)
     try:
@@ -157,6 +159,7 @@ def stop_container(
 def restart_container(
     container_id: str,
     timeout: int = Query(10, description="Seconds to wait before killing"),
+    _: None = Depends(require_admin),
 ):
     try:
         return APIResponse(data=ds.restart_container(container_id, timeout=timeout))
@@ -169,7 +172,7 @@ def restart_container(
     summary="Pause a running container",
     response_model=APIResponse,
 )
-def pause_container(container_id: str):
+def pause_container(container_id: str, _: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.pause_container(container_id))
     except DockerException as exc:
@@ -181,7 +184,7 @@ def pause_container(container_id: str):
     summary="Unpause a paused container",
     response_model=APIResponse,
 )
-def unpause_container(container_id: str):
+def unpause_container(container_id: str, _: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.unpause_container(container_id))
     except DockerException as exc:
@@ -203,9 +206,7 @@ def remove_container(
     force: bool = Query(False, description="Force removal of a running container"),
     remove_volumes: bool = Query(False, alias="v", description="Remove associated anonymous volumes"),
 ):
-    logger.info("Removing container %s (force=%s, volumes=%s)", container_id, force, remove_volumes)
-    try:
-        ds.remove_container(container_id, force=force, remove_volumes=remove_volumes)
-        return APIResponse(data={"removed": container_id})
-    except DockerException as exc:
-        raise handle_docker_exc(exc, container_id)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Container removal is disabled.",
+    )

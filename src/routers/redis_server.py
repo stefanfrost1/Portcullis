@@ -48,7 +48,7 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from redis.exceptions import RedisError, ResponseError
 
 from src.models.redis_schemas import (
@@ -57,6 +57,7 @@ from src.models.redis_schemas import (
     RedisPublishRequest,
 )
 from src.models.schemas import APIResponse
+from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
 import logging
@@ -192,7 +193,7 @@ def config_get(
 
 
 @router.post("/config", summary="CONFIG SET — update a configuration parameter", response_model=APIResponse)
-def config_set(body: RedisConfigSetRequest, db: int = Query(0, ge=0, le=15)):
+def config_set(body: RedisConfigSetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.set_config(body.parameter, body.value, db))
     except ResponseError as exc:
@@ -206,7 +207,7 @@ def config_set(body: RedisConfigSetRequest, db: int = Query(0, ge=0, le=15)):
     summary="CONFIG REWRITE — persist config changes to redis.conf",
     response_model=APIResponse,
 )
-def config_rewrite(db: int = Query(0, ge=0, le=15)):
+def config_rewrite(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.config_rewrite(db))
     except RedisError as exc:
@@ -218,7 +219,7 @@ def config_rewrite(db: int = Query(0, ge=0, le=15)):
     summary="CONFIG RESETSTAT — reset stats counters",
     response_model=APIResponse,
 )
-def config_resetstat(db: int = Query(0, ge=0, le=15)):
+def config_resetstat(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.config_resetstat(db))
     except RedisError as exc:
@@ -230,7 +231,7 @@ def config_resetstat(db: int = Query(0, ge=0, le=15)):
 # ===========================================================================
 
 @router.post("/bgsave", summary="BGSAVE — trigger background RDB snapshot", response_model=APIResponse)
-def bgsave(db: int = Query(0, ge=0, le=15)):
+def bgsave(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.bgsave(db))
     except RedisError as exc:
@@ -238,7 +239,7 @@ def bgsave(db: int = Query(0, ge=0, le=15)):
 
 
 @router.post("/bgrewriteaof", summary="BGREWRITEAOF — trigger background AOF rewrite", response_model=APIResponse)
-def bgrewriteaof(db: int = Query(0, ge=0, le=15)):
+def bgrewriteaof(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.bgrewriteaof(db))
     except RedisError as exc:
@@ -259,6 +260,7 @@ def flushdb(
     confirm: bool = Query(False, description="Must be true to proceed"),
     async_: bool = Query(False, alias="async", description="Run asynchronously"),
     db: int = Query(0, ge=0, le=15),
+    _: None = Depends(require_admin),
 ):
     if not confirm:
         raise HTTPException(
@@ -281,6 +283,7 @@ def flushall(
     confirm: bool = Query(False, description="Must be true to proceed"),
     async_: bool = Query(False, alias="async"),
     db: int = Query(0, ge=0, le=15),
+    _: None = Depends(require_admin),
 ):
     if not confirm:
         raise HTTPException(
@@ -314,6 +317,7 @@ def kill_client(
     addr: Optional[str] = Query(None, description="ip:port of the client"),
     client_id: Optional[int] = Query(None, description="Numeric client ID"),
     db: int = Query(0, ge=0, le=15),
+    _: None = Depends(require_admin),
 ):
     if not addr and not client_id:
         raise HTTPException(status_code=400, detail="Provide addr or client_id")
@@ -351,7 +355,7 @@ def slowlog_len(db: int = Query(0, ge=0, le=15)):
 
 
 @router.post("/slowlog/reset", summary="SLOWLOG RESET — clear the slow log", response_model=APIResponse)
-def slowlog_reset(db: int = Query(0, ge=0, le=15)):
+def slowlog_reset(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.slowlog_reset(db))
     except RedisError as exc:
@@ -412,7 +416,7 @@ def latency_history(event: str, db: int = Query(0, ge=0, le=15)):
 
 
 @router.post("/latency/reset", summary="LATENCY RESET — clear latency samples", response_model=APIResponse)
-def latency_reset(db: int = Query(0, ge=0, le=15)):
+def latency_reset(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.latency_reset(db))
     except RedisError as exc:
@@ -467,7 +471,7 @@ def pubsub_numpat(db: int = Query(0, ge=0, le=15)):
     summary="PUBLISH — send a message to a channel",
     response_model=APIResponse,
 )
-def publish(body: RedisPublishRequest, db: int = Query(0, ge=0, le=15)):
+def publish(body: RedisPublishRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.publish(body.channel, body.message, db))
     except RedisError as exc:
@@ -546,6 +550,14 @@ async def monitor_ws(
         {"time": 1700000000.123, "db": 0, "client_address": "...",
          "command": "SET key value"}
     """
+    # Enforce admin-only access
+    groups_header = websocket.headers.get("x-user-groups", "")
+    if "authp/admin" not in groups_header:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"event": "error", "detail": "Admin role required."}))
+        await websocket.close(code=1008)
+        return
+
     # Enforce single-MONITOR-per-db limit
     if db in _active_monitors:
         await websocket.accept()
@@ -679,7 +691,7 @@ def analysis_expiring_soon(
     description="Passes `keys` and `args` to the script. Returns raw Redis result.",
     response_model=APIResponse,
 )
-def eval_script(body: RedisEvalRequest, db: int = Query(0, ge=0, le=15)):
+def eval_script(body: RedisEvalRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.eval_script(body.script, body.keys, body.args, db)
         return APIResponse(data={"result": result})
