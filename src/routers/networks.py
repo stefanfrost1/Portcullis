@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from docker.errors import NotFound, APIError
 
 from src.models.schemas import APIResponse, NetworkCreateRequest
+from src.routers._auth import require_admin
 from src.services import docker_service as ds
 
-router = APIRouter(prefix="/networks", tags=["Networks"])
+router = APIRouter(prefix="/networks", tags=["Networks"], dependencies=[Depends(require_admin)])
 
 
 @router.get("", summary="List networks", response_model=APIResponse)
