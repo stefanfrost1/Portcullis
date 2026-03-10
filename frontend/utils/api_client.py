@@ -435,3 +435,96 @@ class EngineClient:
 
     def get_redis_queue(self, key: str) -> dict | None:
         return self._get(f"/redis/queues/{key}")
+
+    # ------------------------------------------------------------------
+    # Logs
+    # ------------------------------------------------------------------
+
+    def get_all_logs(
+        self,
+        tail: int = 100,
+        timestamps: bool = True,
+        running_only: bool = True,
+    ) -> dict | None:
+        return self._get("/logs", params={
+            "tail": tail,
+            "timestamps": str(timestamps).lower(),
+            "running_only": str(running_only).lower(),
+        })
+
+    def get_container_logs(
+        self,
+        container_id: str,
+        tail: int = 2000,
+        timestamps: bool = False,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> dict | None:
+        params: dict = {"tail": tail, "timestamps": str(timestamps).lower()}
+        if since:
+            params["since"] = since
+        if until:
+            params["until"] = until
+        return self._get(f"/containers/{container_id}/logs", params=params)
+
+    def search_container_logs(
+        self,
+        container_id: str,
+        pattern: str,
+        tail: int = 2000,
+        max_results: int = 200,
+        case_insensitive: bool = False,
+        timestamps: bool = False,
+    ) -> dict | None:
+        return self._get(f"/containers/{container_id}/logs/search", params={
+            "pattern": pattern,
+            "tail": tail,
+            "max_results": max_results,
+            "case_insensitive": str(case_insensitive).lower(),
+            "timestamps": str(timestamps).lower(),
+        })
+
+    def global_search_logs(
+        self,
+        pattern: str,
+        tail: int = 2000,
+        max_results_per_container: int = 200,
+        case_insensitive: bool = False,
+        running_only: bool = True,
+        timestamps: bool = False,
+    ) -> dict | None:
+        return self._get("/logs/search", params={
+            "pattern": pattern,
+            "tail": tail,
+            "max_results_per_container": max_results_per_container,
+            "case_insensitive": str(case_insensitive).lower(),
+            "running_only": str(running_only).lower(),
+            "timestamps": str(timestamps).lower(),
+        })
+
+    def get_logs_context(
+        self,
+        container_id: str,
+        pivot: str,
+        window_seconds: int = 60,
+        timestamps: bool = False,
+    ) -> dict | None:
+        return self._get(f"/containers/{container_id}/logs/context", params={
+            "pivot": pivot,
+            "window_seconds": window_seconds,
+            "timestamps": str(timestamps).lower(),
+        })
+
+    def global_logs_context(
+        self,
+        pivot: str,
+        window_seconds: int = 60,
+        running_only: bool = True,
+        timestamps: bool = False,
+    ) -> dict | None:
+        return self._get("/logs/context", params={
+            "pivot": pivot,
+            "window_seconds": window_seconds,
+            "running_only": str(running_only).lower(),
+            "timestamps": str(timestamps).lower(),
+        })

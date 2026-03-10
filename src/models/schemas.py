@@ -70,10 +70,17 @@ class LogOptions(BaseModel):
     timestamps: bool = False
 
 
+class LogMatch(BaseModel):
+    """A single matched log line with its parsed Docker timestamp (if available)."""
+    timestamp: Optional[str] = None   # ISO 8601 — use as pivot for context queries
+    line: str                          # log content without the timestamp prefix
+
+
 class LogSearchResult(BaseModel):
     container_id: str
     pattern: str
-    matched_lines: list[str]
+    matched_lines: list[str]           # backward-compat: raw lines (with ts if requested)
+    matches: list[LogMatch]            # structured: always present, timestamp always parsed
     total_matched: int
     truncated: bool
 
@@ -82,6 +89,7 @@ class GlobalLogSearchContainerResult(BaseModel):
     container_id: str
     container_name: str
     matched_lines: list[str]
+    matches: list[LogMatch]
     match_count: int
     truncated: bool
 
@@ -92,6 +100,25 @@ class GlobalLogSearchResult(BaseModel):
     containers_with_matches: int
     total_matched: int
     results: list[GlobalLogSearchContainerResult]
+    errors: list[dict]
+
+
+class LogContextContainerResult(BaseModel):
+    container_id: str
+    container_name: str
+    lines: list[str]
+    count: int
+
+
+class LogContextResult(BaseModel):
+    """Logs from ±window_seconds around a pivot timestamp."""
+    pivot: str
+    window_seconds: int
+    since: str
+    until: str
+    containers_searched: int
+    containers_with_logs: int
+    results: list[LogContextContainerResult]
     errors: list[dict]
 
 

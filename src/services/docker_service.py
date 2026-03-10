@@ -18,6 +18,8 @@ from docker.models.containers import Container
 
 logger = logging.getLogger(__name__)
 
+from datetime import timedelta
+
 from src.models.schemas import (
     ContainerDetail,
     ContainerStats,
@@ -136,6 +138,60 @@ def _container_detail(c: Container) -> dict:
         }
     )
     return base
+
+
+# Docker log timestamp prefix: "2024-01-15T10:23:45.123456789Z <content>"
+_DOCKER_TS_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s*(.*)"
+)
+
+
+def _split_docker_line(line: str) -> tuple[Optional[str], str]:
+    """Split a Docker timestamped log line into (timestamp, content).
+
+    Returns (None, line) when no timestamp prefix is found.
+    """
+    m = _DOCKER_TS_RE.match(line)
+    if m:
+        return m.group(1), m.group(2)
+    return None, line
+
+
+_PIVOT_TS_RE = re.compile(
+    r"^(?P<base>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
+    r"(?P<fraction>\.\d+)?"
+    r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
+)
+
+
+def _parse_pivot_datetime(pivot: str) -> datetime:
+    """
+    Parse an ISO-8601 pivot timestamp safely.
+
+    Docker log timestamps often contain nanoseconds (9 digits), while Python's
+    datetime parser supports microseconds (up to 6 digits). We truncate extra
+    precision to microseconds for robust parsing.
+    """
+    raw = (pivot or "").strip()
+    m = _PIVOT_TS_RE.fullmatch(raw)
+    if not m:
+        raise ValueError(
+            "Invalid pivot timestamp. Use ISO 8601 format, e.g. 2026-03-07T12:43:36.970734572Z"
+        )
+
+    fraction = m.group("fraction") or ""
+    if fraction and len(fraction) > 7:  # '.' + up to 6 microsecond digits
+        fraction = fraction[:7]
+
+    tz = m.group("tz") or ""
+    if tz == "Z":
+        tz = "+00:00"
+
+    normalized = f"{m.group('base')}{fraction}{tz}"
+    dt = datetime.fromisoformat(normalized)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +319,8 @@ def remove_container(container_id: str, force: bool = False, remove_volumes: boo
 def get_logs(
     container_id: str,
     tail: int = 100,
-    since: Optional[str] = None,
-    until: Optional[str] = None,
+    since: Optional[str | int] = None,
+    until: Optional[str | int] = None,
     timestamps: bool = False,
 ) -> list[str]:
     client = _docker_client()
@@ -295,8 +351,8 @@ _SEARCH_TIMEOUT_SECONDS = 5.0
 def search_logs(
     container_id: str,
     pattern: str,
-    tail: int = 5000,
-    max_results: int = 2000,
+    tail: int = 2000,
+    max_results: int = 200,
     since: Optional[str] = None,
     until: Optional[str] = None,
     timestamps: bool = False,
@@ -309,12 +365,13 @@ def search_logs(
     # Guard: tail cap
     tail = min(tail, _MAX_SEARCH_TAIL)
 
-    lines = get_logs(
+    # Always fetch with timestamps internally so we can return them in matches
+    raw_lines = get_logs(
         container_id,
         tail=tail,
         since=since,
         until=until,
-        timestamps=timestamps,
+        timestamps=True,
     )
 
     flags = re.IGNORECASE if case_insensitive else 0
@@ -325,7 +382,7 @@ def search_logs(
 
     # Execute search in a thread with a timeout to prevent ReDoS hangs
     def _do_search() -> list[str]:
-        return [line for line in lines if regex.search(line)]
+        return [line for line in raw_lines if regex.search(line)]
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(_do_search)
@@ -339,10 +396,21 @@ def search_logs(
             )
 
     truncated = len(matched) > max_results
+    page = matched[:max_results]
+
+    # Build structured matches — timestamp always parsed; content stripped of ts prefix
+    structured = []
+    display_lines = []
+    for raw_line in page:
+        ts, content = _split_docker_line(raw_line)
+        structured.append({"timestamp": ts, "line": content})
+        display_lines.append(raw_line if timestamps else content)
+
     return {
         "container_id": container_id,
         "pattern": pattern,
-        "matched_lines": matched[:max_results],
+        "matched_lines": display_lines,   # backward-compat
+        "matches": structured,            # structured with timestamps
         "total_matched": len(matched),
         "truncated": truncated,
     }
@@ -350,6 +418,55 @@ def search_logs(
 
 _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT = 10.0
 _GLOBAL_SEARCH_MAX_WORKERS = 10
+
+
+def get_all_container_logs(
+    tail: int = 100,
+    timestamps: bool = True,
+    running_only: bool = True,
+) -> dict:
+    """Fetch logs from all (running) containers in parallel and return per-container results."""
+    client = _docker_client()
+    containers = client.containers.list(all=not running_only)
+
+    def _fetch(c) -> dict:
+        lines = get_logs(c.id, tail=tail, timestamps=timestamps)
+        return {
+            "container_id": c.id,
+            "container_name": c.name.lstrip("/"),
+            "lines": lines,
+            "count": len(lines),
+        }
+
+    results: list[dict] = []
+    errors: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+        futures = {pool.submit(_fetch, c): c for c in containers}
+        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
+            c = futures[future]
+            try:
+                results.append(future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT))
+            except FutureTimeoutError:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": "fetch timeout",
+                })
+            except Exception as exc:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": str(exc),
+                })
+
+    results.sort(key=lambda r: r["container_name"])
+    return {
+        "containers_fetched": len(results),
+        "containers_searched": len(containers),
+        "containers": results,
+        "errors": errors,
+    }
 
 
 def global_search_logs(
@@ -384,19 +501,30 @@ def global_search_logs(
     containers = client.containers.list(all=not running_only)
 
     def _search_one(c) -> dict:
-        lines = get_logs(
+        # Always fetch with timestamps internally so matches carry pivot timestamps
+        raw_lines = get_logs(
             c.id,
             tail=tail,
             since=since,
             until=until,
-            timestamps=timestamps,
+            timestamps=True,
         )
-        matched = [line for line in lines if regex.search(line)]
+        matched = [line for line in raw_lines if regex.search(line)]
         truncated = len(matched) > max_results_per_container
+        page = matched[:max_results_per_container]
+
+        structured = []
+        display_lines = []
+        for raw_line in page:
+            ts, content = _split_docker_line(raw_line)
+            structured.append({"timestamp": ts, "line": content})
+            display_lines.append(raw_line if timestamps else content)
+
         return {
             "container_id": c.id,
             "container_name": c.name.lstrip("/"),
-            "matched_lines": matched[:max_results_per_container],
+            "matched_lines": display_lines,
+            "matches": structured,
             "match_count": len(matched),
             "truncated": truncated,
         }
@@ -433,6 +561,109 @@ def global_search_logs(
         "containers_searched": len(containers),
         "containers_with_matches": len(results),
         "total_matched": total_matched,
+        "results": results,
+        "errors": errors,
+    }
+
+
+def _pivot_window(pivot: str, window_seconds: int) -> tuple[int, int, str, str]:
+    """Return (since_unix, until_unix, since_iso, until_iso) for a pivot ± window."""
+    dt = _parse_pivot_datetime(pivot)
+    since_dt = dt - timedelta(seconds=window_seconds)
+    until_dt = dt + timedelta(seconds=window_seconds)
+    return (
+        int(since_dt.timestamp()),
+        int(until_dt.timestamp()),
+        since_dt.isoformat(),
+        until_dt.isoformat(),
+    )
+
+
+def get_logs_context(
+    container_id: str,
+    pivot: str,
+    window_seconds: int = 60,
+    timestamps: bool = False,
+) -> dict:
+    """Return logs for a single container within ±window_seconds of pivot."""
+    since_unix, until_unix, since_iso, until_iso = _pivot_window(pivot, window_seconds)
+    lines = get_logs(
+        container_id,
+        tail=10000,
+        since=since_unix,
+        until=until_unix,
+        timestamps=timestamps,
+    )
+    return {
+        "pivot": pivot,
+        "window_seconds": window_seconds,
+        "since": since_iso,
+        "until": until_iso,
+        "container_id": container_id,
+        "lines": lines,
+        "count": len(lines),
+    }
+
+
+def global_logs_context(
+    pivot: str,
+    window_seconds: int = 60,
+    timestamps: bool = False,
+    running_only: bool = True,
+) -> dict:
+    """Return logs from all containers within ±window_seconds of pivot, in parallel."""
+    since_unix, until_unix, since_iso, until_iso = _pivot_window(pivot, window_seconds)
+
+    client = _docker_client()
+    containers = client.containers.list(all=not running_only)
+
+    def _fetch_one(c) -> dict:
+        lines = get_logs(
+            c.id,
+            tail=10000,
+            since=since_unix,
+            until=until_unix,
+            timestamps=timestamps,
+        )
+        return {
+            "container_id": c.id,
+            "container_name": c.name.lstrip("/"),
+            "lines": lines,
+            "count": len(lines),
+        }
+
+    results: list[dict] = []
+    errors: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+        futures = {pool.submit(_fetch_one, c): c for c in containers}
+        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
+            c = futures[future]
+            try:
+                result = future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT)
+                if result["count"] > 0:
+                    results.append(result)
+            except FutureTimeoutError:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": "fetch timeout",
+                })
+            except Exception as exc:
+                errors.append({
+                    "container_id": c.id,
+                    "container_name": c.name.lstrip("/"),
+                    "error": str(exc),
+                })
+
+    results.sort(key=lambda r: r["container_name"])
+    return {
+        "pivot": pivot,
+        "window_seconds": window_seconds,
+        "since": since_iso,
+        "until": until_iso,
+        "containers_searched": len(containers),
+        "containers_with_logs": len(results),
         "results": results,
         "errors": errors,
     }

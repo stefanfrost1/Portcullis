@@ -207,6 +207,71 @@ def stream_logs_sse(
 
 
 # ---------------------------------------------------------------------------
+# Single-container log context (±N seconds around a pivot timestamp)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{container_id}/logs/context",
+    summary="Fetch log context around a timestamp for one container",
+    description=(
+        "Return all log lines within ±`window_seconds` of `pivot` (ISO 8601 timestamp). "
+        "Use the `timestamp` field from a search match as `pivot` to jump to the surrounding context. "
+        "Defaults to ±60 seconds (2-minute window)."
+    ),
+    response_model=APIResponse,
+)
+def get_logs_context(
+    container_id: str,
+    pivot: str = Query(..., description="ISO 8601 timestamp to centre the window on (e.g. 2024-01-15T10:23:45Z)"),
+    window_seconds: int = Query(60, ge=1, le=3600, description="Seconds before and after pivot"),
+    timestamps: bool = Query(False, description="Include Docker timestamps in returned lines"),
+):
+    try:
+        result = ds.get_logs_context(
+            container_id,
+            pivot=pivot,
+            window_seconds=window_seconds,
+            timestamps=timestamps,
+        )
+        return APIResponse(data=result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except DockerException as exc:
+        raise handle_docker_exc(exc, container_id)
+
+
+# ---------------------------------------------------------------------------
+# Global log fetch (all containers, no filter)
+# ---------------------------------------------------------------------------
+
+@global_router.get(
+    "",
+    summary="Fetch logs from all containers",
+    description=(
+        "Return the last `tail` lines from every (running) container in parallel. "
+        "Results are sorted by container name. Use the per-container `lines` arrays "
+        "to render a merged timeline on the client by sorting on the Docker timestamp prefix. "
+        "Pass `running_only=false` to also include stopped containers."
+    ),
+    response_model=APIResponse,
+)
+def get_all_logs(
+    tail: int = Query(100, ge=1, le=2000, description="Lines per container"),
+    timestamps: bool = Query(True, description="Include Docker timestamps in each line"),
+    running_only: bool = Query(True, description="Only fetch from running containers"),
+):
+    try:
+        result = ds.get_all_container_logs(
+            tail=tail,
+            timestamps=timestamps,
+            running_only=running_only,
+        )
+        return APIResponse(data=result)
+    except DockerException as exc:
+        raise handle_docker_exc(exc, "global")
+
+
+# ---------------------------------------------------------------------------
 # Global log search (all containers, egrep-style)
 # ---------------------------------------------------------------------------
 
@@ -241,6 +306,42 @@ def global_search_logs(
             until=until,
             timestamps=timestamps,
             case_insensitive=case_insensitive,
+            running_only=running_only,
+        )
+        return APIResponse(data=result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except DockerException as exc:
+        raise handle_docker_exc(exc, "global")
+
+
+# ---------------------------------------------------------------------------
+# Global log context (all containers, ±N seconds around a pivot timestamp)
+# ---------------------------------------------------------------------------
+
+@global_router.get(
+    "/context",
+    summary="Fetch log context around a timestamp across all containers",
+    description=(
+        "Return log lines from every container within ±`window_seconds` of `pivot`. "
+        "Containers are queried in parallel. Only containers that produced output in the "
+        "window are included in `results`. "
+        "Use the `timestamp` from a global search match as `pivot`. "
+        "Pass `running_only=false` to also include stopped containers."
+    ),
+    response_model=APIResponse,
+)
+def global_logs_context(
+    pivot: str = Query(..., description="ISO 8601 timestamp to centre the window on (e.g. 2024-01-15T10:23:45Z)"),
+    window_seconds: int = Query(60, ge=1, le=3600, description="Seconds before and after pivot"),
+    timestamps: bool = Query(False, description="Include Docker timestamps in returned lines"),
+    running_only: bool = Query(True, description="Only query running containers (false includes stopped)"),
+):
+    try:
+        result = ds.global_logs_context(
+            pivot=pivot,
+            window_seconds=window_seconds,
+            timestamps=timestamps,
             running_only=running_only,
         )
         return APIResponse(data=result)
