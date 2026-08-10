@@ -5,7 +5,7 @@ from src.models.schemas import APIResponse, NetworkCreateRequest
 from src.routers._auth import require_admin
 from src.services import docker_service as ds
 
-router = APIRouter(prefix="/networks", tags=["Networks"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/networks", tags=["Networks"])
 
 
 @router.get("", summary="List networks", response_model=APIResponse)
@@ -27,7 +27,7 @@ def get_network(network_id: str):
 
 
 @router.post("", summary="Create network", response_model=APIResponse, status_code=status.HTTP_201_CREATED)
-def create_network(body: NetworkCreateRequest):
+def create_network(body: NetworkCreateRequest, _: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.create_network(body.name, body.driver, body.internal, body.labels))
     except APIError as exc:
@@ -37,7 +37,7 @@ def create_network(body: NetworkCreateRequest):
 
 
 @router.delete("/{network_id}", summary="Remove network", response_model=APIResponse)
-def remove_network(network_id: str):
+def remove_network(network_id: str, _: None = Depends(require_admin)):
     try:
         ds.remove_network(network_id)
         return APIResponse(data={"removed": network_id})

@@ -6,6 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
+import pandas as pd
 import plotly.graph_objects as go
 from utils.api_client import EngineClient, get_config
 from utils.formatting import bytes_to_human
@@ -22,12 +23,14 @@ def get_client() -> EngineClient:
 
 c = get_client()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
-
 with st.sidebar:
     if st.button("↻ Refresh"):
         st.rerun()
+    force_df = st.checkbox(
+        "Recalculate disk usage",
+        value=False,
+        help="Bypasses the API's disk-usage cache. Slow on hosts with many images.",
+    )
 
 # ---------------------------------------------------------------------------
 # System info
@@ -35,7 +38,9 @@ with st.sidebar:
 
 info = c.get_system_info()
 
-if info:
+if info is None:
+    st.error(c.last_error() or "Could not load system info — Docker may be unreachable.")
+else:
     st.subheader("Docker Daemon")
     cols = st.columns(3)
     cols[0].metric("Docker Version", info.get("docker_version", "—"))
@@ -51,8 +56,6 @@ if info:
     cols3[0].metric("Total Memory", bytes_to_human(info.get("total_memory_bytes")))
     cols3[1].metric("Containers Running", info.get("containers_running", 0))
     cols3[2].metric("Images", info.get("images_count", 0))
-else:
-    st.warning("Could not load system info — Docker may be unreachable.")
 
 st.divider()
 
@@ -62,17 +65,20 @@ st.divider()
 
 st.subheader("Disk Usage")
 
-df_data = c.get_disk_usage()
+with st.spinner("Reading Docker disk usage…"):
+    df_data = c.get_disk_usage(refresh=force_df)
 
-if df_data:
-    # Summarise by category
-    def sum_size(items: list, size_key: str = "size_bytes") -> int:
-        return sum((item.get(size_key) or 0) for item in (items or []))
+if df_data is None:
+    st.error(c.last_error() or "Could not load disk usage.")
+else:
+    summary = df_data.get("summary") or {}
 
-    images_size = sum_size(df_data.get("images", []))
-    containers_size = sum_size(df_data.get("containers", []))
-    volumes_size = sum_size(df_data.get("volumes", []))
-    cache_size = sum_size(df_data.get("build_cache", []))
+    images_size = summary.get("images_bytes", 0)
+    containers_size = summary.get("containers_bytes", 0)
+    volumes_size = summary.get("volumes_bytes", 0)
+    cache_size = summary.get("build_cache_bytes", 0)
+
+    st.caption(f"Total reclaimable footprint: {bytes_to_human(summary.get('total_bytes', 0))}")
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Images", bytes_to_human(images_size))
@@ -106,18 +112,63 @@ if df_data:
     )
     st.plotly_chart(fig, width="stretch")
 
-    # Raw image list
-    with st.expander("Images"):
-        imgs = df_data.get("images", [])
-        for img in imgs:
-            tags = img.get("tags") or ["<none>"]
-            st.write(f"  • {', '.join(tags)} — {bytes_to_human(img.get('size_bytes'))}")
+    # Largest images first — the list runs to hundreds on a busy host.
+    imgs = sorted(
+        df_data.get("images", []),
+        key=lambda i: i.get("size_bytes", 0),
+        reverse=True,
+    )
+    with st.expander(f"Images ({len(imgs)})"):
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Tags": ", ".join(img.get("tags") or ["<none>"]),
+                    "Size": bytes_to_human(img.get("size_bytes")),
+                    "Shared": bytes_to_human(img.get("shared_size_bytes")),
+                    "In use by": img.get("containers", 0),
+                }
+                for img in imgs
+            ]),
+            width="stretch",
+            hide_index=True,
+        )
 
-    # Raw container list
-    with st.expander("Containers"):
-        cts = df_data.get("containers", [])
-        for ct in cts:
-            st.write(f"  • {ct.get('name', '?')} — {bytes_to_human(ct.get('size_bytes'))}")
+    cts = sorted(
+        df_data.get("containers", []),
+        key=lambda ct: ct.get("size_bytes", 0),
+        reverse=True,
+    )
+    with st.expander(f"Containers ({len(cts)})"):
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Name": ct.get("name", "?"),
+                    "Image": ct.get("image", "—"),
+                    "State": ct.get("state", "—"),
+                    "Writable layer": bytes_to_human(ct.get("size_bytes")),
+                }
+                for ct in cts
+            ]),
+            width="stretch",
+            hide_index=True,
+        )
 
-else:
-    st.warning("Could not load disk usage.")
+    vols = sorted(
+        df_data.get("volumes", []),
+        key=lambda v: v.get("size_bytes", 0),
+        reverse=True,
+    )
+    with st.expander(f"Volumes ({len(vols)})"):
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "Name": vol.get("name", "?"),
+                    "Driver": vol.get("driver", "—"),
+                    "Size": bytes_to_human(vol.get("size_bytes")),
+                    "Used by": vol.get("ref_count", 0),
+                }
+                for vol in vols
+            ]),
+            width="stretch",
+            hide_index=True,
+        )

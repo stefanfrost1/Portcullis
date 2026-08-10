@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     # Server
     PORT: int = 8000
 
+    # Docker daemon
+    # Socket read timeout in seconds, and the maximum number of concurrent
+    # connections to the daemon (batch stats/log calls fan out across threads).
+    DOCKER_TIMEOUT: int = 30
+    DOCKER_MAX_POOL_SIZE: int = 32
+    # `docker system df` is expensive on hosts with many images; results are
+    # cached for this many seconds. Set to 0 to disable caching.
+    DISK_USAGE_CACHE_TTL: int = 60
+
     # Redis connection
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

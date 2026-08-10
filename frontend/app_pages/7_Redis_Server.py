@@ -2,6 +2,7 @@
 Redis Server page — summary, performance, replication, clients, slowlog, config, memory, latency.
 """
 
+import datetime
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -21,9 +22,6 @@ def get_client() -> EngineClient:
 
 
 c = get_client()
-
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
 
 
 def _percent_text(value) -> str:
@@ -55,7 +53,9 @@ with st.sidebar:
 
 with tab_summary:
     summary = c.get_redis_summary()
-    if not summary:
+    if summary is None:
+        st.error(c.last_error() or "Redis summary unavailable.")
+    elif not summary:
         st.warning("Redis summary unavailable.")
     else:
         server = summary.get("server", {}) or {}
@@ -68,25 +68,30 @@ with tab_summary:
         st.subheader("Server")
         c1, c2, c3 = st.columns(3)
         c1.metric("Redis Version", server.get("redis_version", "—"))
-        c2.metric("Uptime", seconds_to_human(server.get("uptime_in_seconds")))
-        c3.metric("Mode", server.get("redis_mode", "—"))
+        c2.metric("Uptime", seconds_to_human(server.get("uptime_seconds")))
+        c3.metric("Mode", server.get("mode", "—"))
 
         st.subheader("Clients & Memory")
         c4, c5, c6 = st.columns(3)
-        c4.metric("Connected Clients", clients_s.get("connected_clients", 0))
-        c5.metric("Memory Used", bytes_to_human(memory.get("used_memory_bytes")))
-        c6.metric("Peak Memory", bytes_to_human(memory.get("used_memory_peak_bytes")))
+        c4.metric("Connected Clients", clients_s.get("connected", 0))
+        c5.metric("Memory Used", bytes_to_human(memory.get("used_bytes")))
+        c6.metric("Peak Memory", bytes_to_human(memory.get("peak_used_bytes")))
 
         st.subheader("Performance & Keys")
         c7, c8, c9 = st.columns(3)
-        c7.metric("Ops / sec", f"{perf.get('instantaneous_ops_per_sec', 0):,}")
-        c8.metric("Hit Rate", _percent_text(perf.get("hit_rate_percent")))
+        c7.metric("Ops / sec", f"{perf.get('ops_per_sec') or 0:,}")
+        c8.metric("Hit Rate", _percent_text(perf.get("hit_rate")))
         c9.metric("Total Keys", keyspace.get("total_keys", 0))
 
         st.subheader("Replication")
         c10, c11 = st.columns(2)
         c10.metric("Role", repl.get("role", "—"))
-        c11.metric("Connected Replicas", repl.get("connected_replicas", 0))
+        c11.metric("Connected Replicas", repl.get("connected_slaves", 0))
+
+        databases = keyspace.get("databases") or []
+        if databases:
+            st.subheader("Databases")
+            st.dataframe(pd.DataFrame(databases), width="stretch", hide_index=True)
 
 # ---------------------------------------------------------------------------
 # Performance
@@ -94,24 +99,30 @@ with tab_summary:
 
 with tab_perf:
     perf = c.get_redis_performance()
-    if not perf:
+    if perf is None:
+        st.error(c.last_error() or "Performance data unavailable.")
+    elif not perf:
         st.warning("Performance data unavailable.")
     else:
-        p1, p2 = st.columns(2)
-        p1.metric("Ops / sec", f"{perf.get('instantaneous_ops_per_sec', 0):,}")
-        p2.metric("Net I/O (in)", bytes_to_human(perf.get("instantaneous_input_kbps")) + "/s" if perf.get("instantaneous_input_kbps") is not None else "—")
+        p1, p2, p3 = st.columns(3)
+        p1.metric("Ops / sec", f"{perf.get('ops_per_sec') or 0:,}")
+        p2.metric("Net in / sec", bytes_to_human(perf.get("net_input_bytes_per_sec")))
+        p3.metric("Net out / sec", bytes_to_human(perf.get("net_output_bytes_per_sec")))
 
-        p3, p4 = st.columns(2)
-        p3.metric("Hit Rate", _percent_text(perf.get("hit_rate_percent")))
-        p4.metric("Evictions", f"{perf.get('evicted_keys', 0):,}")
+        p4, p5, p6 = st.columns(3)
+        p4.metric("Hit Rate", _percent_text(perf.get("hit_rate_percent")))
+        p5.metric("Keyspace Hits", f"{perf.get('keyspace_hits') or 0:,}")
+        p6.metric("Keyspace Misses", f"{perf.get('keyspace_misses') or 0:,}")
 
-        p5, p6 = st.columns(2)
-        p5.metric("Keyspace Hits", f"{perf.get('keyspace_hits', 0):,}")
-        p6.metric("Keyspace Misses", f"{perf.get('keyspace_misses', 0):,}")
+        p7, p8, p9 = st.columns(3)
+        p7.metric("Total Commands", f"{perf.get('total_commands_processed') or 0:,}")
+        p8.metric("Evictions", f"{perf.get('evicted_keys') or 0:,}")
+        p9.metric("Expired Keys", f"{perf.get('expired_keys') or 0:,}")
 
-        p7, p8 = st.columns(2)
-        p7.metric("Total Commands Processed", f"{perf.get('total_commands_processed', 0):,}")
-        p8.metric("Expired Keys", f"{perf.get('expired_keys', 0):,}")
+        p10, p11, p12 = st.columns(3)
+        p10.metric("Connected Clients", perf.get("connected_clients") or 0)
+        p11.metric("Blocked Clients", perf.get("blocked_clients") or 0)
+        p12.metric("Rejected Connections", f"{perf.get('rejected_connections') or 0:,}")
 
 # ---------------------------------------------------------------------------
 # Replication
@@ -119,17 +130,26 @@ with tab_perf:
 
 with tab_repl:
     repl = c.get_redis_replication()
-    if not repl:
+    if repl is None:
+        st.error(c.last_error() or "Replication data unavailable.")
+    elif not repl:
         st.warning("Replication data unavailable.")
     else:
         r1, r2, r3 = st.columns(3)
         r1.metric("Role", repl.get("role", "—"))
-        r2.metric("Connected Replicas", repl.get("connected_replicas", 0))
+        r2.metric("Connected Replicas", repl.get("connected_slaves", 0))
         r3.metric("Replication ID", repl.get("master_replid", "—")[:16] + "…" if repl.get("master_replid") else "—")
 
         r4, r5 = st.columns(2)
         r4.metric("Master Repl Offset", repl.get("master_repl_offset", "—"))
-        r5.metric("Second Repl Offset", repl.get("second_repl_offset", "—"))
+        r5.metric("Repl Backlog", bytes_to_human(repl.get("repl_backlog_size")))
+
+        if repl.get("role") in ("slave", "replica"):
+            st.subheader("Upstream master")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Master", f"{repl.get('master_host', '—')}:{repl.get('master_port', '—')}")
+            m2.metric("Link status", repl.get("master_link_status", "—"))
+            m3.metric("Last I/O", seconds_to_human(repl.get("master_last_io_seconds_ago")))
 
         replicas = repl.get("replicas", []) or []
         if replicas:
@@ -166,11 +186,18 @@ with tab_slow:
     else:
         rows = []
         for entry in slowlog:
+            command = entry.get("command")
+            if isinstance(command, (list, tuple)):
+                command = " ".join(str(a) for a in command)
+            started = entry.get("start_time")
             rows.append({
                 "ID": entry.get("id", "?"),
-                "Timestamp": entry.get("timestamp", "—"),
-                "Duration (µs)": entry.get("duration_us", 0),
-                "Command": " ".join(str(a) for a in (entry.get("args") or [])),
+                "Started": (
+                    datetime.datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M:%S")
+                    if isinstance(started, (int, float)) else str(started or "—")
+                ),
+                "Duration (µs)": entry.get("duration_microseconds", 0),
+                "Command": command or "—",
                 "Client": entry.get("client_addr", "—"),
             })
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
@@ -186,23 +213,29 @@ with tab_config:
 
     config = c.get_redis_config(pattern=config_pattern)
 
-    if not config:
-        st.warning("Config data unavailable.")
+    if config is None:
+        st.error(c.last_error() or "Config data unavailable.")
     else:
         cfg_items = config if isinstance(config, dict) else {}
         if not cfg_items:
             st.info("No config keys matched.")
         else:
-            st.caption(f"{len(cfg_items)} config key(s) shown.")
-            for param, val in sorted(cfg_items.items()):
+            # Redis exposes ~200 parameters; rendering an editor for each one
+            # makes the whole page sluggish, so narrow with the filter above.
+            editable = sorted(cfg_items.items())[:50]
+            st.caption(
+                f"{len(cfg_items)} config key(s) matched"
+                + (f"; showing the first {len(editable)}." if len(cfg_items) > len(editable) else ".")
+            )
+            for param, val in editable:
                 with st.expander(param, expanded=False):
                     new_val = st.text_input("Value", value=str(val), key=f"cfg_{param}")
                     if st.button("Save", key=f"save_cfg_{param}"):
                         result = c.set_redis_config(param, new_val)
                         if result is not None:
                             st.success(f"Set {param} = {new_val}")
-                        elif "last_error" in st.session_state:
-                            st.error(st.session_state["last_error"])
+                        else:
+                            st.error(c.last_error() or "CONFIG SET failed.")
 
     st.divider()
     st.subheader("Persistence")
@@ -245,7 +278,9 @@ with tab_config:
 
 with tab_memory:
     mem = c.get_redis_memory_stats()
-    if not mem:
+    if mem is None:
+        st.error(c.last_error() or "Memory stats unavailable.")
+    elif not mem:
         st.warning("Memory stats unavailable.")
     else:
         stats = mem.get("stats", {}) or {}

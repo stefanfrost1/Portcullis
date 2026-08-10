@@ -23,9 +23,6 @@ def get_client() -> EngineClient:
 
 c = get_client()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
-
 with st.sidebar:
     if st.button("↻ Refresh"):
         st.rerun()
@@ -45,8 +42,8 @@ with st.expander("Create a new network", expanded=False):
         if result is not None:
             st.success(f"Network '{net_name}' created.")
             st.rerun()
-        elif "last_error" in st.session_state:
-            st.error(st.session_state["last_error"])
+        else:
+            st.error(c.last_error() or "Create failed.")
 
 st.divider()
 
@@ -54,7 +51,11 @@ st.divider()
 # Network list
 # ---------------------------------------------------------------------------
 
-networks = c.get_networks() or []
+networks = c.get_networks()
+
+if networks is None:
+    st.error(c.last_error() or "Could not load networks.")
+    networks = []
 
 if not networks:
     st.info("No networks found.")
@@ -109,10 +110,12 @@ else:
                         st.warning("Remove this network?")
                         if st.button("Yes, remove", key=f"yes_net_{net_id}"):
                             result = c.remove_network(net_id)
-                            if result is not None:
-                                st.success("Removed.")
                             st.session_state.pop(confirm_key, None)
-                            st.rerun()
+                            if result is None:
+                                st.error(c.last_error() or "Remove failed.")
+                            else:
+                                st.success("Removed.")
+                                st.rerun()
                         if st.button("Cancel", key=f"no_net_{net_id}"):
                             st.session_state.pop(confirm_key, None)
                             st.rerun()

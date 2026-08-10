@@ -24,16 +24,12 @@ def get_client() -> EngineClient:
 
 c = get_client()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
-
 # Refresh controls in sidebar
 cfg = get_config()
 with st.sidebar:
     show_all = st.checkbox("Show stopped containers", value=True)
+    name_filter = st.text_input("Filter by name / image", value="")
     auto_refresh = st.checkbox("Auto-refresh (10s)", value=False)
-    if auto_refresh:
-        st_autorefresh(interval=10_000, key="containers_refresh")
     if st.button("↻ Refresh now"):
         st.rerun()
 
@@ -44,7 +40,20 @@ tab_all, tab_stats, tab_groups = st.tabs(["All Containers", "Live Stats", "By Co
 # ---------------------------------------------------------------------------
 
 with tab_all:
-    containers = c.get_containers(all=show_all) or []
+    with st.spinner("Loading containers…"):
+        containers = c.get_containers(all=show_all)
+
+    if containers is None:
+        st.error(c.last_error() or "Could not load containers.")
+        containers = []
+
+    if name_filter.strip():
+        needle = name_filter.strip().lower()
+        containers = [
+            ct for ct in containers
+            if needle in (ct.get("name") or "").lower()
+            or needle in (ct.get("image") or "").lower()
+        ]
 
     if not containers:
         st.info("No containers found.")
@@ -122,31 +131,16 @@ with tab_all:
                                 st.rerun()
 
                     st.write("---")
-                    # Remove with confirmation
-                    confirm_key = f"confirm_remove_{ct_id}"
-                    if st.session_state.get(confirm_key):
-                        st.warning("Remove this container?")
-                        col_yes, col_no = st.columns(2)
-                        with col_yes:
-                            if st.button("Yes, remove", key=f"yes_{ct_id}"):
-                                result = c.remove_container(ct_id, force=True)
-                                if result is not None:
-                                    st.success("Removed.")
-                                st.session_state.pop(confirm_key, None)
-                                st.rerun()
-                        with col_no:
-                            if st.button("Cancel", key=f"no_{ct_id}"):
-                                st.session_state.pop(confirm_key, None)
-                                st.rerun()
-                    else:
-                        if st.button("🗑 Remove", key=f"remove_{ct_id}"):
-                            st.session_state[confirm_key] = True
-                            st.rerun()
+                    # Removal is disabled server-side (DELETE /containers/{id}
+                    # always returns 403), so no button is offered here.
+                    st.caption("Removal is disabled by the API.")
 
                 # Fetch and show env/mounts on demand
                 if st.toggle("Show full detail", key=f"detail_{ct_id}"):
                     detail = c.get_container(ct_id)
-                    if detail:
+                    if detail is None:
+                        st.error(c.last_error() or "Could not load container detail.")
+                    else:
                         env = detail.get("env", [])
                         if env:
                             st.write("**Environment variables:**")
@@ -161,7 +155,19 @@ with tab_all:
 # ---------------------------------------------------------------------------
 
 with tab_stats:
-    stats_list = c.get_all_container_stats() or []
+    with st.spinner("Sampling container stats…"):
+        stats_payload = c.get_all_container_stats()
+
+    if stats_payload is None:
+        st.error(c.last_error() or "Could not load container stats.")
+        stats_list, stats_errors = [], []
+    else:
+        stats_list = stats_payload.get("containers", []) or []
+        stats_errors = stats_payload.get("errors", []) or []
+
+    if stats_errors:
+        with st.expander(f"⚠️ {len(stats_errors)} container(s) did not report stats"):
+            st.dataframe(pd.DataFrame(stats_errors), width="stretch", hide_index=True)
 
     if not stats_list:
         st.info("No running containers or stats unavailable.")
@@ -207,16 +213,51 @@ with tab_stats:
 # ---------------------------------------------------------------------------
 
 with tab_groups:
-    groups = c.get_container_groups()
+    with st.spinner("Grouping containers by Compose project…"):
+        groups = c.get_container_groups()
+
     if groups is None:
-        st.warning("Could not load container groups.")
+        st.error(c.last_error() or "Could not load container groups.")
     elif not groups:
         st.info("No Compose projects found.")
     else:
-        project_map = groups if isinstance(groups, dict) else {}
-        for project, services in project_map.items():
-            with st.expander(f"📁 {project} ({len(services)} service(s))"):
-                for svc in (services if isinstance(services, list) else []):
-                    name = svc.get("name", "?")
-                    state = svc.get("state", "?")
-                    st.write(f"  {state_color(state)} **{name}** — {svc.get('status', state)}")
+        summary_rows = [
+            {
+                "Project": g.get("project", "?"),
+                "Services": g.get("total", 0),
+                "Running": g.get("running", 0),
+                "Paused": g.get("paused", 0),
+                "Stopped": g.get("stopped", 0),
+            }
+            for g in groups
+        ]
+        st.dataframe(pd.DataFrame(summary_rows), width="stretch", hide_index=True)
+        st.divider()
+
+        for g in groups:
+            project = g.get("project", "?")
+            services = g.get("services", []) or []
+            running = g.get("running", 0)
+            total = g.get("total", len(services))
+            health = "🟢" if running == total else ("🟡" if running else "🔴")
+
+            with st.expander(f"{health} 📁 {project} — {running}/{total} running"):
+                svc_rows = [
+                    {
+                        "": state_color(svc.get("state")),
+                        "Service": svc.get("name") or "—",
+                        "Container": svc.get("container_name", "—"),
+                        "State": svc.get("state", "—"),
+                        "Uptime": seconds_to_human(svc.get("uptime_seconds")),
+                        "Image": svc.get("image", "—"),
+                    }
+                    for svc in services
+                ]
+                st.dataframe(pd.DataFrame(svc_rows), width="stretch", hide_index=True)
+
+# ---------------------------------------------------------------------------
+# Arm the refresh timer last, so a slow fetch cannot restart the page mid-load.
+# ---------------------------------------------------------------------------
+
+if auto_refresh:
+    st_autorefresh(interval=10_000, key="containers_refresh")

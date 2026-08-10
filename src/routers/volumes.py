@@ -5,7 +5,7 @@ from src.models.schemas import APIResponse, VolumeCreateRequest
 from src.routers._auth import require_admin
 from src.services import docker_service as ds
 
-router = APIRouter(prefix="/volumes", tags=["Volumes"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/volumes", tags=["Volumes"])
 
 
 @router.get("", summary="List volumes", response_model=APIResponse)
@@ -27,7 +27,7 @@ def get_volume(volume_name: str):
 
 
 @router.post("", summary="Create volume", response_model=APIResponse, status_code=status.HTTP_201_CREATED)
-def create_volume(body: VolumeCreateRequest):
+def create_volume(body: VolumeCreateRequest, _: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.create_volume(body.name, body.driver, body.labels))
     except APIError as exc:
@@ -35,7 +35,7 @@ def create_volume(body: VolumeCreateRequest):
 
 
 @router.delete("/{volume_name}", summary="Remove volume", response_model=APIResponse)
-def remove_volume(volume_name: str, force: bool = False):
+def remove_volume(volume_name: str, force: bool = False, _: None = Depends(require_admin)):
     try:
         ds.remove_volume(volume_name, force=force)
         return APIResponse(data={"removed": volume_name})
@@ -48,7 +48,7 @@ def remove_volume(volume_name: str, force: bool = False):
 
 
 @router.post("/prune", summary="Remove unused volumes", response_model=APIResponse)
-def prune_volumes():
+def prune_volumes(_: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.prune_volumes())
     except APIError as exc:

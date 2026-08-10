@@ -59,7 +59,18 @@ MyEngineAPI/
     └── services/
         ├── docker_service.py    # Docker SDK wrapper (lazy singleton client)
         └── redis_service.py     # Redis connection pool wrapper
+
+frontend/                        # Streamlit dashboard (separate image)
+├── app.py                       # st.navigation entrypoint
+├── utils/
+│   ├── api_client.py            # EngineClient — the only place that talks to the API
+│   └── formatting.py            # bytes/seconds/state formatting helpers
+└── app_pages/                   # One module per page (Dashboard, Containers, …)
 ```
+
+The frontend talks to Portcullis over HTTP only. When an API response shape
+changes, `frontend/utils/api_client.py` is the single place to update — pages
+consume its return values, never raw responses.
 
 ---
 
@@ -104,7 +115,7 @@ All endpoints are under the base path `/api/v1`.
 | POST   | `/volumes`                        | Create volume                                |
 | DELETE | `/volumes/{name}`                 | Remove volume                                |
 | GET    | `/system/info`                    | Docker daemon info + version                 |
-| GET    | `/system/df`                      | Disk usage breakdown                         |
+| GET    | `/system/df`                      | Disk usage breakdown (cached; `?refresh=true` to recompute) |
 | WS     | `/system/events`                  | Real-time Docker events stream               |
 | GET    | `/health`                         | Health check (Docker reachability)           |
 
@@ -234,6 +245,9 @@ All settings are in `src/config.py` and loaded from environment. Safe defaults a
 | `REDIS_PORT`      | `6379`                                       | Redis port                                          |
 | `REDIS_PASSWORD`  | `null`                                       | Redis password (omit if not set)                    |
 | `REDIS_DB`        | `0`                                          | Default Redis database index (0–15)                 |
+| `DOCKER_TIMEOUT`  | `30`                                         | Docker socket read timeout in seconds               |
+| `DOCKER_MAX_POOL_SIZE` | `32`                                    | Max concurrent Docker daemon connections; must exceed the batch helpers' worker count |
+| `DISK_USAGE_CACHE_TTL` | `60`                                    | Seconds to cache `docker system df`; `0` disables caching |
 
 **Production checklist:**
 
@@ -253,10 +267,28 @@ All settings are in `src/config.py` and loaded from environment. Safe defaults a
 4. **Request logging** — logs method, path, status, latency, and request ID
 5. **API key auth** — checks `X-API-Key` header when `API_KEY_ENABLED=true`; docs, OpenAPI, `/health`, and `/` are always exempt
 
+### Authorisation
+
+Roles come from the Caddy-injected `X-User-Groups` header (`src/routers/_auth.py`):
+`admin` (`authp/admin`), `developer` (`authp/user`), `reader` (no header).
+
+**Reads are open to every caller; only state-changing endpoints depend on
+`require_admin`.** Never attach `require_admin` as a router-level dependency —
+that blocks `GET`s too, which silently breaks every consumer that doesn't
+forward the header.
+
+The Streamlit frontend forwards `X-User-Groups` from the incoming browser
+request on each API call. Its `EngineClient` is a `@st.cache_resource`
+singleton shared by all sessions, so per-user identity is read at call time and
+never stored on the client.
+
 ### Service layer
 
-- `docker_service.py` — lazy-initialised singleton `docker.DockerClient`. All methods return plain dicts/primitives; no SDK objects leak into routers.
+- `docker_service.py` — lazy-initialised singleton `docker.DockerClient`, built with `DOCKER_TIMEOUT` and `DOCKER_MAX_POOL_SIZE`. All methods return plain dicts/primitives; no SDK objects leak into routers.
 - `redis_service.py` — connection pool wrapper. Pools are closed cleanly on shutdown via the FastAPI lifespan handler.
+  - redis-py has **no** `object_encoding` / `object_refcount` / `object_idletime` helpers — use `client.object("encoding", key)`.
+- Batch helpers (`stats/all`, the log fan-outs) drain their thread pools through `_drain_futures`, which reports stragglers as errors instead of letting `as_completed`'s timeout discard the results that already succeeded.
+- `docker system df` is expensive on hosts with many images, so `get_disk_usage()` memoises it for `DISK_USAGE_CACHE_TTL` seconds and normalises Docker's CamelCase payload into `size_bytes` fields plus a `summary` block.
 
 ### Error handling
 
@@ -429,4 +461,4 @@ This CLAUDE.md should be updated whenever:
 - Development workflows change
 - New conventions are adopted by the team
 
-*Last updated: 2026-02-28 (full rewrite — codebase fully scaffolded at v3.1.0)*
+*Last updated: 2026-08-10 (UI fixes: RBAC on reads, disk-usage caching + normalisation, redis-py OBJECT usage, frontend/API contract alignment)*

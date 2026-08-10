@@ -92,7 +92,7 @@ def compose_groups():
     summary="Inspect container",
     response_model=APIResponse,
 )
-def get_container(container_id: str, _: None = Depends(require_admin)):
+def get_container(container_id: str):
     try:
         return APIResponse(data=ds.get_container(container_id))
     except DockerException as exc:
