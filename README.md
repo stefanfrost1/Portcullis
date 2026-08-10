@@ -12,11 +12,48 @@ A Docker and Redis management platform consisting of:
 
 ## Quickstart — Docker Compose
 
-Everything runs with a single command. No pre-setup required.
+Everything runs from prebuilt images on Docker Hub (`simplitics1`). No build required.
 
 ```bash
-docker compose up --build
+docker compose pull
+docker compose up -d
 ```
+
+Pin a specific image tag with `IMAGE_TAG` (defaults to `latest`):
+
+```bash
+IMAGE_TAG=3.1.0 docker compose up -d          # bash
+$env:IMAGE_TAG='3.1.0'; docker compose up -d  # PowerShell
+```
+
+### Building the images
+
+Use the build script instead of `docker compose build`:
+
+```bash
+./build.sh                 # build both images, tag = version in src/main.py + latest
+./build.sh -t 3.2.0 -p     # build and push to Docker Hub (docker login first)
+./build.sh -s frontend     # frontend image only
+```
+
+```powershell
+./build.ps1                    # same defaults on Windows
+./build.ps1 -Tag 3.2.0 -Push
+./build.ps1 -Service frontend
+```
+
+### CI builds
+
+`.github/workflows/docker-build.yml` builds and pushes both images on every push to
+`main`/`master`, `feature/**` and `release/**`. Other branches are not built.
+
+| Branch          | Image tag        |
+|-----------------|------------------|
+| `main`/`master` | `latest`         |
+| `feature/foo`   | `feature-foo`    |
+| `release/1.2.0` | `release-1.2.0`  |
+
+Requires two repository secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 
 Then open:
 - **Dashboard** → http://localhost:8501
@@ -150,7 +187,7 @@ MYENGINE_URL=http://localhost:8000 streamlit run app.py
    ```yaml
    - MYENGINE_API_KEY=change-me-to-a-strong-secret
    ```
-3. Restart: `docker compose up --build`
+3. Restart: `docker compose up -d`
 
 ---
 
