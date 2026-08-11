@@ -95,25 +95,83 @@ def close_docker_client() -> None:
 _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 
 
+def _scope_names() -> list[str]:
+    """Exact Compose project names in scope (COMPOSE_PROJECTS + COMPOSE_PROJECT)."""
+    names = [n.strip() for n in (settings.COMPOSE_PROJECTS or "").split(",") if n.strip()]
+    single = (settings.COMPOSE_PROJECT or "").strip()
+    if single and single not in names:
+        names.append(single)
+    return names
+
+
+def _scope_prefix() -> str:
+    """Compose project-name prefix in scope (COMPOSE_PROJECT_PREFIX), or ''."""
+    return (settings.COMPOSE_PROJECT_PREFIX or "").strip()
+
+
+def scope_active() -> bool:
+    """True when any project scope (single, list, or prefix) is configured."""
+    return bool(_scope_names() or _scope_prefix())
+
+
 def project_scope() -> Optional[str]:
-    """The configured Compose project to scope listings to, or None when unset."""
-    project = (settings.COMPOSE_PROJECT or "").strip()
-    return project or None
+    """Human-readable description of the active scope, or None when unscoped.
+
+    Surfaced in `/overview` (`project_scope`); filtering itself uses
+    `_project_matches()`, not this string.
+    """
+    if not scope_active():
+        return None
+    parts: list[str] = []
+    prefix = _scope_prefix()
+    if prefix:
+        parts.append(f"{prefix}*")
+    parts.extend(_scope_names())
+    return ", ".join(parts) or None
+
+
+def _project_matches(project: Optional[str]) -> bool:
+    """Whether a resource's compose-project label falls in the active scope."""
+    if not scope_active():
+        return True
+    if not project:
+        return False
+    prefix = _scope_prefix()
+    if prefix and project.startswith(prefix):
+        return True
+    return project in _scope_names()
+
+
+def _exact_single() -> Optional[str]:
+    """The one project to push to the daemon as an exact filter, else None.
+
+    Only a single exact name with no prefix can be filtered entirely daemon-side;
+    a list or prefix needs in-process narrowing (Docker labels can't OR/prefix).
+    """
+    if _scope_prefix():
+        return None
+    names = _scope_names()
+    return names[0] if len(names) == 1 else None
+
+
+def _needs_client_narrow() -> bool:
+    """True when the daemon filter alone is not precise enough (list/prefix)."""
+    return scope_active() and _exact_single() is None
 
 
 def _project_filters(extra: Optional[dict] = None) -> Optional[dict]:
-    """Build a Docker API `filters` dict scoped to the configured Compose project.
+    """Build a Docker API `filters` dict for the active scope.
 
-    Compose stamps `com.docker.compose.project=<name>` on every container,
-    network, and volume it creates. Filtering on that label happens daemon-side,
-    so scoped listings never fetch — let alone inspect — resources outside the
-    project. Returns `None` (no filtering) when `COMPOSE_PROJECT` is unset, so
-    callers can pass the result straight to the SDK unchanged.
+    - Unscoped: passes `extra` through (or None).
+    - Single exact project: an exact `com.docker.compose.project=<name>` label —
+      the daemon returns only that project's resources.
+    - List / prefix: filters to resources that merely *have* a compose-project
+      label (daemon-side), which callers then narrow with `_project_matches()`.
     """
     filters: dict = dict(extra or {})
-    project = project_scope()
-    if project:
-        label = f"{_COMPOSE_PROJECT_LABEL}={project}"
+    if scope_active():
+        exact = _exact_single()
+        label = f"{_COMPOSE_PROJECT_LABEL}={exact}" if exact else _COMPOSE_PROJECT_LABEL
         existing = filters.get("label")
         if existing is None:
             filters["label"] = label
@@ -122,6 +180,39 @@ def _project_filters(extra: Optional[dict] = None) -> Optional[dict]:
         else:
             filters["label"] = [existing, label]
     return filters or None
+
+
+def _container_project(c: Container) -> Optional[str]:
+    """Read a container model's compose-project label (sparse or inspected)."""
+    labels = c.attrs.get("Labels")
+    if labels is None:
+        labels = (c.attrs.get("Config") or {}).get("Labels") or {}
+    return (labels or {}).get(_COMPOSE_PROJECT_LABEL)
+
+
+def _volume_project(v) -> Optional[str]:
+    """Read a volume model's compose-project label."""
+    return (v.attrs.get("Labels") or {}).get(_COMPOSE_PROJECT_LABEL)
+
+
+def _list_scoped_containers(all_containers: bool, sparse: bool = False) -> list:
+    """List containers honouring the active scope (daemon filter + client narrow)."""
+    client = _docker_client()
+    models = client.containers.list(
+        all=all_containers, sparse=sparse, filters=_project_filters()
+    )
+    if _needs_client_narrow():
+        models = [c for c in models if _project_matches(_container_project(c))]
+    return models
+
+
+def _list_scoped_volumes() -> list:
+    """List volumes honouring the active scope (daemon filter + client narrow)."""
+    client = _docker_client()
+    models = client.volumes.list(filters=_project_filters())
+    if _needs_client_narrow():
+        models = [v for v in models if _project_matches(_volume_project(v))]
+    return models
 
 
 def _container_name(c: Container) -> str:
@@ -317,8 +408,7 @@ def _parse_pivot_datetime(pivot: str) -> datetime:
 # ---------------------------------------------------------------------------
 
 def list_containers(all_containers: bool = True) -> list[dict]:
-    client = _docker_client()
-    containers = client.containers.list(all=all_containers, filters=_project_filters())
+    containers = _list_scoped_containers(all_containers)
     return [_container_summary(c) for c in containers]
 
 
@@ -544,8 +634,7 @@ def get_all_container_logs(
     running_only: bool = True,
 ) -> dict:
     """Fetch logs from all (running) containers in parallel and return per-container results."""
-    client = _docker_client()
-    containers = client.containers.list(all=not running_only, sparse=True, filters=_project_filters())
+    containers = _list_scoped_containers(not running_only, sparse=True)
 
     def _fetch(c) -> dict:
         lines = get_logs(c.id, tail=tail, timestamps=timestamps)
@@ -619,8 +708,7 @@ def global_search_logs(
     except re.error as exc:
         raise ValueError(f"Invalid regex pattern: {exc}") from exc
 
-    client = _docker_client()
-    containers = client.containers.list(all=not running_only, sparse=True, filters=_project_filters())
+    containers = _list_scoped_containers(not running_only, sparse=True)
 
     def _search_one(c) -> dict:
         # Always fetch with timestamps internally so matches carry pivot timestamps
@@ -738,8 +826,7 @@ def global_logs_context(
     """Return logs from all containers within ±window_seconds of pivot, in parallel."""
     since_unix, until_unix, since_iso, until_iso = _pivot_window(pivot, window_seconds)
 
-    client = _docker_client()
-    containers = client.containers.list(all=not running_only, sparse=True, filters=_project_filters())
+    containers = _list_scoped_containers(not running_only, sparse=True)
 
     def _fetch_one(c) -> dict:
         lines = get_logs(
@@ -957,8 +1044,7 @@ def _volume_summary(vol) -> dict:
 
 
 def list_volumes() -> list[dict]:
-    client = _docker_client()
-    return [_volume_summary(v) for v in client.volumes.list(filters=_project_filters())]
+    return [_volume_summary(v) for v in _list_scoped_volumes()]
 
 
 def get_volume(volume_name: str) -> dict:
@@ -1132,8 +1218,7 @@ def get_all_container_stats(
     Containers that time out or raise are included in `errors` rather than
     raising, so a single unhealthy container does not abort the whole call.
     """
-    client = _docker_client()
-    running = client.containers.list(all=False, sparse=True, filters=_project_filters())
+    running = _list_scoped_containers(False, sparse=True)
 
     stats_list: list[dict] = []
     errors: list[dict] = []
@@ -1171,8 +1256,7 @@ def get_compose_groups() -> list[dict]:
     Containers without that label are omitted.
     Returns list sorted by project name.
     """
-    client = _docker_client()
-    all_containers = client.containers.list(all=True, filters=_project_filters())
+    all_containers = _list_scoped_containers(True)
 
     groups: dict[str, dict] = {}
     for c in all_containers:
@@ -1234,7 +1318,7 @@ def get_docker_overview() -> dict:
     volumes_list = df.get("Volumes") or []
 
     if project:
-        scoped = client.containers.list(all=True, sparse=True, filters=_project_filters())
+        scoped = _list_scoped_containers(True, sparse=True)
         running = paused = stopped = 0
         for c in scoped:
             state = (c.attrs.get("State") or "").lower()
@@ -1251,7 +1335,7 @@ def get_docker_overview() -> dict:
             "total": len(scoped),
         }
         images_count = len(images_list)
-        scoped_volume_names = {v.name for v in client.volumes.list(filters=_project_filters())}
+        scoped_volume_names = {v.name for v in _list_scoped_volumes()}
         volumes_list = [v for v in volumes_list if v.get("Name") in scoped_volume_names]
     else:
         info = client.info()

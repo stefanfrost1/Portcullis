@@ -346,7 +346,9 @@ Application settings live in `src/config.py` and are loaded from environment. Bu
 | `DOCKER_MAX_POOL_SIZE`  | `32`                                         | Docker SDK connection pool size                     |
 | `DISK_USAGE_CACHE_TTL`  | `60`                                         | Seconds to cache `GET /system/df` results           |
 | `DISK_USAGE_TIMEOUT`    | `120`                                        | Dedicated (longer) socket timeout for the expensive `docker system df` call |
-| `COMPOSE_PROJECT`       | `""`                                         | Scope operational Docker views (containers/volumes/logs) to one Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
+| `COMPOSE_PROJECT`       | `""`                                         | Scope operational Docker views (containers/volumes/logs) to one exact Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
+| `COMPOSE_PROJECTS`      | `""`                                         | Comma-separated list of exact Compose project names to scope to (OR) |
+| `COMPOSE_PROJECT_PREFIX`| `""`                                         | Scope to every Compose project whose name starts with this prefix |
 | `REDIS_HOST`            | `redis`                                      | Redis hostname (use service name in Compose)        |
 | `REDIS_PORT`            | `6379`                                       | Redis port                                          |
 | `REDIS_PASSWORD`        | `null`                                       | Redis password (omit if not set)                    |
@@ -396,28 +398,43 @@ Routers that perform mutations (write, delete, lifecycle actions) declare `requi
 
 ### Project scoping
 
-Set `COMPOSE_PROJECT=<name>` to scope every Docker listing to a single Compose
-project — the daemon returns only resources labelled
-`com.docker.compose.project=<name>`. This is filtering **and** a performance
-lever: the daemon never returns, and Portcullis never inspects, containers
-outside the project.
+Scope the operational Docker views to one **or more** Compose projects via the
+`com.docker.compose.project` label. Three selectors, combined with OR:
+
+| Env var | Meaning |
+|---------|---------|
+| `COMPOSE_PROJECT` | a single exact project name |
+| `COMPOSE_PROJECTS` | comma-separated list of exact project names |
+| `COMPOSE_PROJECT_PREFIX` | match any project whose name starts with this prefix |
+
+Use a single one, or combine them (e.g. a prefix plus a couple of extra exact
+names). All empty (default) = host-wide, unchanged.
+
+**How filtering happens** (`_project_filters()` + the `_list_scoped_*` helpers):
+
+- A **single exact** name is pushed to the daemon as an exact label filter — the
+  daemon returns only that project's resources (cheapest; no inspect of others).
+- A **list or prefix** cannot be expressed by Docker's label filter (no OR, no
+  prefix), so the daemon is asked only for resources that *have* a
+  compose-project label and Portcullis narrows them in-process via
+  `_project_matches()` (`_needs_client_narrow()` gates this).
+
+Scope surface:
 
 - **Scoped:** container list/stats/groups, the global log endpoints
   (`/logs`, `/logs/search`, `/logs/context`), volumes, and the
-  container/volume/compose sections of `/overview` (which also gains a
-  `project_scope` field).
+  container/volume/compose sections of `/overview` (which also carries a
+  `project_scope` description field).
 - **Not scoped (host-wide reference):** images and networks — reference
   resources, and Compose does not stamp the project label on pulled images, so
   filtering images would hide all of them. Also unscoped: single-resource
   inspects by id/name (a caller with an id already has the resource).
-- Empty `COMPOSE_PROJECT` (default) preserves the previous host-wide behaviour.
-- The filter is applied at the SDK boundary via `_project_filters()`, which
-  returns `None` when unset so calls are unchanged.
 
 Independently of scoping, the fan-out helpers (`/containers/stats/all` and the
 global log endpoints) list containers with `sparse=True` — they only need id +
 name, so they skip the per-container inspect that the SDK's default listing
-does. Use `_container_name()` to read a name off a sparse model.
+does. Use `_container_name()` to read a name off a sparse model, and
+`_container_project()` to read its compose-project label.
 
 The frontend's own `COMPOSE_PROJECT` (optional, cosmetic) only drives a
 "Scoped to project" caption on the Containers, Volumes, and Dashboard pages; the actual
@@ -466,7 +483,7 @@ Volumes, networks, and images sit in a **Resources** section below the day-to-da
 
 All API calls go through `frontend/utils/api_client.py`, which wraps every backend endpoint in a typed Python method. Add new API methods there when adding endpoints. `frontend/utils/formatting.py` holds shared display helpers (byte formatting, uptime strings, etc.).
 
-The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`). Optional `COMPOSE_PROJECT` (mirror of the backend value) only drives the "Scoped to project" caption — set it on the frontend when the backend is scoped so the UI labels the subset.
+The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`). The scope-mirror vars (`COMPOSE_PROJECT` / `COMPOSE_PROJECTS` / `COMPOSE_PROJECT_PREFIX`) are cosmetic on the frontend — they only drive the "Scoped to project(s)" caption; set them to match the backend so the UI labels the subset.
 
 ---
 

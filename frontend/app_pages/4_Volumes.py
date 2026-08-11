@@ -13,8 +13,8 @@ st.set_page_config(page_title="Volumes", page_icon="💾", layout="wide")
 st.title("💾 Volumes")
 
 _cfg = get_config()
-if _cfg.get("compose_project"):
-    st.caption(f"🔒 Scoped to Compose project: **{_cfg['compose_project']}**")
+if _cfg.get("compose_scope"):
+    st.caption(f"🔒 Scoped to Compose project(s): **{_cfg['compose_scope']}**")
 
 
 @st.cache_resource

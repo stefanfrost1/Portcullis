@@ -33,7 +33,10 @@ services:
       - MYENGINE_API_KEY=${API_KEY:-}
       - REFRESH_INTERVAL=${REFRESH_INTERVAL:-10}
       # - DASHBOARD_TITLE=My Project    # renames the overview page (default "Dashboard")
-      # - COMPOSE_PROJECT=myproject    # cosmetic: label the UI as scoped (match the backend value)
+      # Cosmetic caption only — mirror whichever scope var(s) the backend uses:
+      # - COMPOSE_PROJECT=myproject
+      # - COMPOSE_PROJECTS=dev-web,dev-db
+      # - COMPOSE_PROJECT_PREFIX=dev-
     depends_on:
       - portcullis
     networks:
@@ -62,7 +65,11 @@ services:
       # - REDIS_DB=0                   # default database index (0-15)
       # - API_KEY_ENABLED=true         # uncomment to require X-API-Key header
       # - API_KEY=change-me-to-a-strong-secret
-      # - COMPOSE_PROJECT=myproject    # scope all Docker listings to one Compose project (empty = host-wide)
+      # Scope operational views to one/more Compose projects (empty = host-wide).
+      # Use any one, or combine (OR):
+      # - COMPOSE_PROJECT=myproject          # a single exact project
+      # - COMPOSE_PROJECTS=dev-web,dev-db    # a list of exact projects
+      # - COMPOSE_PROJECT_PREFIX=dev-        # every project starting with 'dev-'
     depends_on:
       - redis
     healthcheck:

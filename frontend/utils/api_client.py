@@ -53,13 +53,22 @@ def get_config() -> dict:
         except (KeyError, AttributeError, FileNotFoundError):
             return os.environ.get(key, default)
 
+    # Cosmetic only: the backend does the actual scoping. Mirror the same
+    # COMPOSE_PROJECT / COMPOSE_PROJECTS / COMPOSE_PROJECT_PREFIX values here to
+    # label the scoped views. Build a single human-readable scope string.
+    _prefix = (_secret("COMPOSE_PROJECT_PREFIX", "") or "").strip()
+    _names = [n.strip() for n in (_secret("COMPOSE_PROJECTS", "") or "").split(",") if n.strip()]
+    _single = (_secret("COMPOSE_PROJECT", "") or "").strip()
+    if _single and _single not in _names:
+        _names.append(_single)
+    _scope_parts = ([f"{_prefix}*"] if _prefix else []) + _names
+
     return {
         "base_url": (_secret("MYENGINE_URL", "http://localhost:8000")).rstrip("/"),
         "api_key": _secret("MYENGINE_API_KEY") or None,
         "refresh_interval": int(_secret("REFRESH_INTERVAL", 10)),
-        # Cosmetic only: the backend does the actual scoping via its own
-        # COMPOSE_PROJECT. Set the same value here to label the scoped views.
-        "compose_project": (_secret("COMPOSE_PROJECT", "") or "").strip(),
+        "compose_project": _single,
+        "compose_scope": ", ".join(_scope_parts),
         # Name shown for the overview page (nav item + header). Set per
         # deployment so a project-scoped instance reads as that project.
         "dashboard_title": (

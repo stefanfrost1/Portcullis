@@ -43,15 +43,22 @@ class Settings(BaseSettings):
     DISK_USAGE_TIMEOUT: int = 120
 
     # Compose project scope.
-    # When set, the operational Docker views (containers, their logs/stats/groups,
-    # and volumes) are filtered daemon-side to resources labelled
-    # `com.docker.compose.project=<value>`. This both scopes the UI to a single
-    # project and cuts overhead — the daemon never returns, and Portcullis never
-    # inspects, containers outside the project.
-    # Empty string (default) = no filter, i.e. the previous host-wide behaviour.
+    # Scopes the operational Docker views (containers, their logs/stats/groups,
+    # and volumes) to one or more Compose projects via the
+    # `com.docker.compose.project` label. Three ways to select, combined with OR:
+    #   COMPOSE_PROJECT         — a single exact project name
+    #   COMPOSE_PROJECTS        — comma-separated list of exact project names
+    #   COMPOSE_PROJECT_PREFIX  — match any project whose name starts with this
+    # A single exact name is filtered entirely daemon-side (cheapest). A list or
+    # prefix can't be expressed by Docker's label filter (no OR / no prefix), so
+    # the daemon is asked only for compose-labelled resources and Portcullis
+    # narrows the result in-process.
+    # All empty (default) = no filter, i.e. the previous host-wide behaviour.
     # Images and networks stay host-wide (they are reference resources; Compose
     # does not stamp the project label on pulled images).
     COMPOSE_PROJECT: str = ""
+    COMPOSE_PROJECTS: str = ""
+    COMPOSE_PROJECT_PREFIX: str = ""
 
     # Redis connection
     REDIS_HOST: str = "redis"

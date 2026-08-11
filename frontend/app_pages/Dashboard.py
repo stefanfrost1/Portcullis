@@ -66,8 +66,8 @@ with st.sidebar:
 
 st.title(f"🐳 {_dashboard_title}")
 
-if cfg.get("compose_project"):
-    st.caption(f"🔒 Scoped to Compose project: **{cfg['compose_project']}**")
+if cfg.get("compose_scope"):
+    st.caption(f"🔒 Scoped to Compose project(s): **{cfg['compose_scope']}**")
 
 c = client()
 
