@@ -236,6 +236,8 @@ All settings are in `src/config.py` and loaded from environment. Safe defaults a
 
 | Variable          | Default                                      | Description                                         |
 |-------------------|----------------------------------------------|-----------------------------------------------------|
+| `REGISTRY`        | `ghcr.io/stefanfrost1`                       | Container registry prefix for `make build/push`     |
+| `TAG`             | `latest`                                     | Image tag for `make build/push` and Compose         |
 | `PORT`            | `8000`                                       | Uvicorn listen port                                 |
 | `CORS_ORIGINS`    | `http://localhost:3000,http://localhost:5173` | Comma-separated allowed origins; `*` only for local |
 | `API_KEY_ENABLED` | `false`                                      | Set `true` to require `X-API-Key` on all requests   |
@@ -324,16 +326,62 @@ The interactive Swagger UI at `/api/v1/docs` can be used for manual endpoint tes
 
 ## Build & Deployment
 
-```bash
-# Build image
-docker build -t myengineapi .
+### Images
 
-# Run standalone (Docker socket + Redis required)
+| Image name | Source | Port |
+|---|---|---|
+| `portcullis` | `Dockerfile` (repo root) | 8000 |
+| `portcullis-frontend` | `frontend/Dockerfile` | 8501 |
+
+Default registry: `ghcr.io/stefanfrost1`. Override with `REGISTRY=` and `TAG=`.
+
+### Build and push (Makefile)
+
+```bash
+# Build both images
+make build
+
+# Build individually
+make build-backend
+make build-frontend
+
+# Push both to registry
+make push
+
+# Build + push in one step
+make release
+
+# Override registry or tag
+make release REGISTRY=docker.io/myorg TAG=1.2.3
+```
+
+### Using pre-built images in other Compose setups
+
+Reference the published images directly — no source code required:
+
+```yaml
+services:
+  portcullis:
+    image: ghcr.io/stefanfrost1/portcullis:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - REDIS_HOST=redis
+
+  frontend:
+    image: ghcr.io/stefanfrost1/portcullis-frontend:latest
+    environment:
+      - MYENGINE_URL=http://portcullis:8000
+```
+
+### Run standalone (no Compose)
+
+```bash
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e REDIS_HOST=<redis-host> \
   -p 8000:8000 \
-  myengineapi
+  ghcr.io/stefanfrost1/portcullis:latest
 ```
 
 The Dockerfile uses `python:3.12-slim`, creates a non-root user (`appuser`, UID 1000), installs dependencies before copying source (layer-cache friendly), and exposes port `8000`.
