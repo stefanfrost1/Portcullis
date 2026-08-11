@@ -26,6 +26,8 @@ c = get_client()
 
 # Refresh controls in sidebar
 cfg = get_config()
+if cfg.get("compose_project"):
+    st.caption(f"🔒 Scoped to Compose project: **{cfg['compose_project']}**")
 with st.sidebar:
     show_all = st.checkbox("Show stopped containers", value=True)
     name_filter = st.text_input("Filter by name / image", value="")

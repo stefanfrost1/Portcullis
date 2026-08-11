@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     # cached for this many seconds. Set to 0 to disable caching.
     DISK_USAGE_CACHE_TTL: int = 60
 
+    # Compose project scope.
+    # When set, every Docker listing (containers, their logs/stats, networks,
+    # volumes) is filtered daemon-side to resources labelled
+    # `com.docker.compose.project=<value>`. This both scopes the UI to a single
+    # project and cuts overhead — the daemon never returns, and Portcullis never
+    # inspects, containers outside the project.
+    # Empty string (default) = no filter, i.e. the previous host-wide behaviour.
+    # Images are always host-wide (Compose does not stamp the project label on
+    # the images it pulls, so filtering them would hide everything).
+    COMPOSE_PROJECT: str = ""
+
     # Redis connection
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

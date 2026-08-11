@@ -32,6 +32,7 @@ services:
       - MYENGINE_URL=http://portcullis:8000
       - MYENGINE_API_KEY=${API_KEY:-}
       - REFRESH_INTERVAL=${REFRESH_INTERVAL:-10}
+      # - COMPOSE_PROJECT=myproject    # cosmetic: label the UI as scoped (match the backend value)
     depends_on:
       - portcullis
     networks:
@@ -60,6 +61,7 @@ services:
       # - REDIS_DB=0                   # default database index (0-15)
       # - API_KEY_ENABLED=true         # uncomment to require X-API-Key header
       # - API_KEY=change-me-to-a-strong-secret
+      # - COMPOSE_PROJECT=myproject    # scope all Docker listings to one Compose project (empty = host-wide)
     depends_on:
       - redis
     healthcheck:

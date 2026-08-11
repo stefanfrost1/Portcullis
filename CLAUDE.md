@@ -345,6 +345,7 @@ Application settings live in `src/config.py` and are loaded from environment. Bu
 | `DOCKER_TIMEOUT`        | `30`                                         | Docker SDK client timeout (seconds)                 |
 | `DOCKER_MAX_POOL_SIZE`  | `32`                                         | Docker SDK connection pool size                     |
 | `DISK_USAGE_CACHE_TTL`  | `60`                                         | Seconds to cache `GET /system/df` results           |
+| `COMPOSE_PROJECT`       | `""`                                         | Scope all Docker listings to one Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
 | `REDIS_HOST`            | `redis`                                      | Redis hostname (use service name in Compose)        |
 | `REDIS_PORT`            | `6379`                                       | Redis port                                          |
 | `REDIS_PASSWORD`        | `null`                                       | Redis password (omit if not set)                    |
@@ -392,6 +393,34 @@ Routers that perform mutations (write, delete, lifecycle actions) declare `requi
 - `docker_service.py` — lazy-initialised singleton `docker.DockerClient`. All methods return plain dicts/primitives; no SDK objects leak into routers.
 - `redis_service.py` — connection pool wrapper (separate decoded + binary pools per DB). Pools are closed cleanly on shutdown via the FastAPI lifespan handler.
 
+### Project scoping
+
+Set `COMPOSE_PROJECT=<name>` to scope every Docker listing to a single Compose
+project — the daemon returns only resources labelled
+`com.docker.compose.project=<name>`. This is filtering **and** a performance
+lever: the daemon never returns, and Portcullis never inspects, containers
+outside the project.
+
+- **Scoped:** container list/stats/groups, the global log endpoints
+  (`/logs`, `/logs/search`, `/logs/context`), networks, volumes, and the
+  container/volume/compose sections of `/overview` (which also gains a
+  `project_scope` field).
+- **Not scoped:** images (Compose does not stamp the project label on pulled
+  images, so filtering would hide all of them) and single-resource inspects by
+  id/name (a caller with an id already has the resource).
+- Empty `COMPOSE_PROJECT` (default) preserves the previous host-wide behaviour.
+- The filter is applied at the SDK boundary via `_project_filters()`, which
+  returns `None` when unset so calls are unchanged.
+
+Independently of scoping, the fan-out helpers (`/containers/stats/all` and the
+global log endpoints) list containers with `sparse=True` — they only need id +
+name, so they skip the per-container inspect that the SDK's default listing
+does. Use `_container_name()` to read a name off a sparse model.
+
+The frontend's own `COMPOSE_PROJECT` (optional, cosmetic) only drives a
+"Scoped to project" caption on the Containers and Dashboard pages; the actual
+scoping is entirely backend-side.
+
 ### Error handling
 
 - **Router level:** Docker exceptions are translated by `_docker_errors.handle_docker_exc()` into typed `HTTPException` responses (`404`, `409`, `503`, etc.).
@@ -433,7 +462,7 @@ The Streamlit frontend (`frontend/`) uses Streamlit's explicit `st.navigation` A
 
 All API calls go through `frontend/utils/api_client.py`, which wraps every backend endpoint in a typed Python method. Add new API methods there when adding endpoints. `frontend/utils/formatting.py` holds shared display helpers (byte formatting, uptime strings, etc.).
 
-The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled.
+The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. Optional `COMPOSE_PROJECT` (mirror of the backend value) only drives the "Scoped to project" caption — set it on the frontend when the backend is scoped so the UI labels the subset.
 
 ---
 

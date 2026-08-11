@@ -64,6 +64,9 @@ with st.sidebar:
 
 st.title("🐳 MyEngine Dashboard")
 
+if cfg.get("compose_project"):
+    st.caption(f"🔒 Scoped to Compose project: **{cfg['compose_project']}**")
+
 c = client()
 
 # Health checks (fast, small calls)

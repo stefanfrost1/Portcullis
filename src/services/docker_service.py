@@ -72,6 +72,53 @@ def close_docker_client() -> None:
         _client = None
 
 
+_COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
+
+
+def project_scope() -> Optional[str]:
+    """The configured Compose project to scope listings to, or None when unset."""
+    project = (settings.COMPOSE_PROJECT or "").strip()
+    return project or None
+
+
+def _project_filters(extra: Optional[dict] = None) -> Optional[dict]:
+    """Build a Docker API `filters` dict scoped to the configured Compose project.
+
+    Compose stamps `com.docker.compose.project=<name>` on every container,
+    network, and volume it creates. Filtering on that label happens daemon-side,
+    so scoped listings never fetch — let alone inspect — resources outside the
+    project. Returns `None` (no filtering) when `COMPOSE_PROJECT` is unset, so
+    callers can pass the result straight to the SDK unchanged.
+    """
+    filters: dict = dict(extra or {})
+    project = project_scope()
+    if project:
+        label = f"{_COMPOSE_PROJECT_LABEL}={project}"
+        existing = filters.get("label")
+        if existing is None:
+            filters["label"] = label
+        elif isinstance(existing, list):
+            filters["label"] = [*existing, label]
+        else:
+            filters["label"] = [existing, label]
+    return filters or None
+
+
+def _container_name(c: Container) -> str:
+    """Container name from either an inspected or a sparse (list) model.
+
+    `Container.name` only reads `attrs['Name']`, which `list(sparse=True)` does
+    not populate — sparse models carry `Names` instead. The fan-out helpers use
+    sparse listing (they only need id + name), so read whichever is present.
+    """
+    if c.attrs.get("Name"):
+        return c.attrs["Name"].lstrip("/")
+    names = c.attrs.get("Names") or []
+    if names:
+        return names[0].lstrip("/")
+    return (c.id or "")[:12]
+
+
 def _batch_deadline(item_count: int, max_workers: int, per_item_timeout: float) -> float:
     """Overall budget for a fan-out call.
 
@@ -251,7 +298,7 @@ def _parse_pivot_datetime(pivot: str) -> datetime:
 
 def list_containers(all_containers: bool = True) -> list[dict]:
     client = _docker_client()
-    containers = client.containers.list(all=all_containers)
+    containers = client.containers.list(all=all_containers, filters=_project_filters())
     return [_container_summary(c) for c in containers]
 
 
@@ -478,13 +525,13 @@ def get_all_container_logs(
 ) -> dict:
     """Fetch logs from all (running) containers in parallel and return per-container results."""
     client = _docker_client()
-    containers = client.containers.list(all=not running_only)
+    containers = client.containers.list(all=not running_only, sparse=True, filters=_project_filters())
 
     def _fetch(c) -> dict:
         lines = get_logs(c.id, tail=tail, timestamps=timestamps)
         return {
             "container_id": c.id,
-            "container_name": c.name.lstrip("/"),
+            "container_name": _container_name(c),
             "lines": lines,
             "count": len(lines),
         }
@@ -507,7 +554,7 @@ def get_all_container_logs(
             if error:
                 errors.append({
                     "container_id": c.id,
-                    "container_name": c.name.lstrip("/"),
+                    "container_name": _container_name(c),
                     "error": "fetch timeout" if error == "timeout" else error,
                 })
             else:
@@ -553,7 +600,7 @@ def global_search_logs(
         raise ValueError(f"Invalid regex pattern: {exc}") from exc
 
     client = _docker_client()
-    containers = client.containers.list(all=not running_only)
+    containers = client.containers.list(all=not running_only, sparse=True, filters=_project_filters())
 
     def _search_one(c) -> dict:
         # Always fetch with timestamps internally so matches carry pivot timestamps
@@ -577,7 +624,7 @@ def global_search_logs(
 
         return {
             "container_id": c.id,
-            "container_name": c.name.lstrip("/"),
+            "container_name": _container_name(c),
             "matched_lines": display_lines,
             "matches": structured,
             "match_count": len(matched),
@@ -602,7 +649,7 @@ def global_search_logs(
             if error:
                 errors.append({
                     "container_id": c.id,
-                    "container_name": c.name.lstrip("/"),
+                    "container_name": _container_name(c),
                     "error": "search timeout" if error == "timeout" else error,
                 })
             elif result["match_count"] > 0:
@@ -672,7 +719,7 @@ def global_logs_context(
     since_unix, until_unix, since_iso, until_iso = _pivot_window(pivot, window_seconds)
 
     client = _docker_client()
-    containers = client.containers.list(all=not running_only)
+    containers = client.containers.list(all=not running_only, sparse=True, filters=_project_filters())
 
     def _fetch_one(c) -> dict:
         lines = get_logs(
@@ -684,7 +731,7 @@ def global_logs_context(
         )
         return {
             "container_id": c.id,
-            "container_name": c.name.lstrip("/"),
+            "container_name": _container_name(c),
             "lines": lines,
             "count": len(lines),
         }
@@ -707,7 +754,7 @@ def global_logs_context(
             if error:
                 errors.append({
                     "container_id": c.id,
-                    "container_name": c.name.lstrip("/"),
+                    "container_name": _container_name(c),
                     "error": "fetch timeout" if error == "timeout" else error,
                 })
             elif result["count"] > 0:
@@ -841,7 +888,7 @@ def _network_summary(net) -> dict:
 
 def list_networks() -> list[dict]:
     client = _docker_client()
-    return [_network_summary(n) for n in client.networks.list()]
+    return [_network_summary(n) for n in client.networks.list(filters=_project_filters())]
 
 
 def get_network(network_id: str) -> dict:
@@ -889,7 +936,7 @@ def _volume_summary(vol) -> dict:
 
 def list_volumes() -> list[dict]:
     client = _docker_client()
-    return [_volume_summary(v) for v in client.volumes.list()]
+    return [_volume_summary(v) for v in client.volumes.list(filters=_project_filters())]
 
 
 def get_volume(volume_name: str) -> dict:
@@ -1060,7 +1107,7 @@ def get_all_container_stats(
     raising, so a single unhealthy container does not abort the whole call.
     """
     client = _docker_client()
-    running = client.containers.list(all=False)
+    running = client.containers.list(all=False, sparse=True, filters=_project_filters())
 
     stats_list: list[dict] = []
     errors: list[dict] = []
@@ -1076,7 +1123,7 @@ def get_all_container_stats(
             if error:
                 errors.append({
                     "container_id": c.id,
-                    "name": c.name.lstrip("/"),
+                    "name": _container_name(c),
                     "error": "stats timeout" if error == "timeout" else error,
                 })
             else:
@@ -1099,7 +1146,7 @@ def get_compose_groups() -> list[dict]:
     Returns list sorted by project name.
     """
     client = _docker_client()
-    all_containers = client.containers.list(all=True)
+    all_containers = client.containers.list(all=True, filters=_project_filters())
 
     groups: dict[str, dict] = {}
     for c in all_containers:
@@ -1140,10 +1187,15 @@ def get_compose_groups() -> list[dict]:
 def get_docker_overview() -> dict:
     """
     Minimal Docker snapshot for the overview endpoint.
-    Makes two Docker API calls: info() and a (cached) df().
+
+    Host-wide, this makes two Docker API calls: info() and a (cached) df().
+    When COMPOSE_PROJECT is set, info()'s host-wide counts no longer describe
+    the project, so container counts are derived from a sparse (no-inspect)
+    scoped listing and volumes are narrowed to the project's labelled volumes.
+    Images are always host-wide.
     """
     client = _docker_client()
-    info = client.info()
+    project = project_scope()
     df = _raw_disk_usage()
 
     images_list = df.get("Images") or []
@@ -1154,6 +1206,37 @@ def get_docker_overview() -> dict:
     )
 
     volumes_list = df.get("Volumes") or []
+
+    if project:
+        scoped = client.containers.list(all=True, sparse=True, filters=_project_filters())
+        running = paused = stopped = 0
+        for c in scoped:
+            state = (c.attrs.get("State") or "").lower()
+            if state == "running":
+                running += 1
+            elif state == "paused":
+                paused += 1
+            else:
+                stopped += 1
+        container_counts = {
+            "running": running,
+            "paused": paused,
+            "stopped": stopped,
+            "total": len(scoped),
+        }
+        images_count = len(images_list)
+        scoped_volume_names = {v.name for v in client.volumes.list(filters=_project_filters())}
+        volumes_list = [v for v in volumes_list if v.get("Name") in scoped_volume_names]
+    else:
+        info = client.info()
+        container_counts = {
+            "running": info.get("ContainersRunning", 0),
+            "paused": info.get("ContainersPaused", 0),
+            "stopped": info.get("ContainersStopped", 0),
+            "total": info.get("Containers", 0),
+        }
+        images_count = info.get("Images", 0)
+
     total_volume_bytes = sum(
         (v.get("UsageData") or {}).get("Size", 0) for v in volumes_list
     )
@@ -1162,14 +1245,10 @@ def get_docker_overview() -> dict:
 
     return {
         "status": "ok",
-        "containers": {
-            "running": info.get("ContainersRunning", 0),
-            "paused": info.get("ContainersPaused", 0),
-            "stopped": info.get("ContainersStopped", 0),
-            "total": info.get("Containers", 0),
-        },
+        "project_scope": project,
+        "containers": container_counts,
         "images": {
-            "count": info.get("Images", 0),
+            "count": images_count,
             "total_bytes": total_image_bytes,
             "reclaimable_bytes": reclaimable_image_bytes,
         },

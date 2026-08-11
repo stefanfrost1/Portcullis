@@ -53,6 +53,9 @@ def get_config() -> dict:
         "base_url": (_secret("MYENGINE_URL", "http://localhost:8000")).rstrip("/"),
         "api_key": _secret("MYENGINE_API_KEY") or None,
         "refresh_interval": int(_secret("REFRESH_INTERVAL", 10)),
+        # Cosmetic only: the backend does the actual scoping via its own
+        # COMPOSE_PROJECT. Set the same value here to label the scoped views.
+        "compose_project": (_secret("COMPOSE_PROJECT", "") or "").strip(),
     }
 
 
