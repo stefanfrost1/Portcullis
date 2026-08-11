@@ -1,16 +1,21 @@
 # ============================================================
 # docker-compose.yml — Portcullis + Streamlit frontend + Redis
 #
-# Quickstart (all three services):
-#   docker compose up --build
+# Uses prebuilt images from Docker Hub (simplitics1).
+# Build/push them with ./build.ps1 (Windows) or ./build.sh (Linux/macOS).
+#
+# Quickstart:
+#   docker compose pull
+#   docker compose up -d
+#
+# Image tag is controlled by IMAGE_TAG (default: latest):
+#   IMAGE_TAG=3.1.0 docker compose up -d
 #
 # URLs after startup:
 #   UI (Streamlit):  http://localhost:8501
-#   API (FastAPI):   http://localhost:8000/api/v1/docs
+#   API (FastAPI):   http://localhost:8001/api/v1/docs
 #   Redis:           localhost:6379 (internal only by default)
 # ============================================================
-
-version: "3.9"
 
 services:
 
@@ -18,10 +23,7 @@ services:
   # Streamlit frontend
   # ------------------------------------------------------------------
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: ${REGISTRY:-ghcr.io/stefanfrost1}/portcullis-frontend:${TAG:-latest}
+    image: ${REGISTRY:-simplitics1}/portcullis-frontend:${IMAGE_TAG:-latest}
     container_name: myengine-frontend
     restart: unless-stopped
     ports:
@@ -42,7 +44,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${REGISTRY:-ghcr.io/stefanfrost1}/portcullis:${TAG:-latest}
     container_name: portcullis
     # Needed for Docker socket access inside container on Windows/WSL hosts.
     user: "0:0"

@@ -1,5 +1,8 @@
 .git
 .gitignore
+frontend
+build.sh
+build.ps1
 __pycache__
 *.pyc
 *.pyo
