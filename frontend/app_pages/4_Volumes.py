@@ -21,9 +21,6 @@ def get_client() -> EngineClient:
 
 c = get_client()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
-
 with st.sidebar:
     if st.button("↻ Refresh"):
         st.rerun()
@@ -42,8 +39,8 @@ with st.expander("Create a new volume", expanded=False):
         if result is not None:
             st.success(f"Volume '{vol_name}' created.")
             st.rerun()
-        elif "last_error" in st.session_state:
-            st.error(st.session_state["last_error"])
+        else:
+            st.error(c.last_error() or "Create failed.")
 
 st.divider()
 
@@ -51,7 +48,11 @@ st.divider()
 # Volume list
 # ---------------------------------------------------------------------------
 
-volumes = c.get_volumes() or []
+volumes = c.get_volumes()
+
+if volumes is None:
+    st.error(c.last_error() or "Could not load volumes.")
+    volumes = []
 
 if not volumes:
     st.info("No volumes found.")
@@ -92,10 +93,12 @@ else:
                     st.warning("Remove this volume?")
                     if st.button("Yes, remove", key=f"yes_vol_{vol_name}"):
                         result = c.remove_volume(vol_name)
-                        if result is not None:
-                            st.success("Removed.")
                         st.session_state.pop(confirm_key, None)
-                        st.rerun()
+                        if result is None:
+                            st.error(c.last_error() or "Remove failed.")
+                        else:
+                            st.success("Removed.")
+                            st.rerun()
                     if st.button("Cancel", key=f"no_vol_{vol_name}"):
                         st.session_state.pop(confirm_key, None)
                         st.rerun()

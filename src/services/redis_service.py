@@ -167,7 +167,7 @@ def get_key(
     pipe = r.pipeline(transaction=False)
     pipe.type(key)
     pipe.ttl(key)
-    pipe.object_encoding(key)
+    pipe.object("encoding", key)   # no object_encoding() helper in redis-py
     pipe.memory_usage(key)
     responses = pipe.execute(raise_on_error=False)
 
@@ -265,9 +265,11 @@ def get_key_metadata(key: str, db: int = 0) -> dict:
     pipe.type(key)
     pipe.ttl(key)
     pipe.pttl(key)
-    pipe.object_encoding(key)
-    pipe.object_refcount(key)
-    pipe.object_idletime(key)
+    # redis-py exposes OBJECT through object(infotype, key); there are no
+    # object_encoding / object_refcount / object_idletime helpers.
+    pipe.object("encoding", key)
+    pipe.object("refcount", key)
+    pipe.object("idletime", key)
     pipe.memory_usage(key)
     res = pipe.execute(raise_on_error=False)
     return {

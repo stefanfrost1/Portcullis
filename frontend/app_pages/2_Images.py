@@ -22,12 +22,18 @@ def get_client() -> EngineClient:
 
 c = get_client()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
-
 with st.sidebar:
     if st.button("↻ Refresh"):
         st.rerun()
+    tag_filter = st.text_input("Filter by tag / ID", value="")
+    detail_limit = st.slider(
+        "Detail cards to render",
+        min_value=10,
+        max_value=200,
+        value=25,
+        step=5,
+        help="Only this many images get an expandable card; the table above always lists all of them.",
+    )
 
 # ---------------------------------------------------------------------------
 # Pull image form
@@ -43,8 +49,8 @@ with st.expander("Pull a new image", expanded=False):
         if result is not None:
             st.success(f"Pulled {pull_name} successfully.")
             st.rerun()
-        elif "last_error" in st.session_state:
-            st.error(st.session_state["last_error"])
+        else:
+            st.error(c.last_error() or "Pull failed.")
 
 st.divider()
 
@@ -52,7 +58,22 @@ st.divider()
 # Image list
 # ---------------------------------------------------------------------------
 
-images = c.get_images() or []
+with st.spinner("Loading images…"):
+    images = c.get_images()
+
+if images is None:
+    st.error(c.last_error() or "Could not load images.")
+    images = []
+
+if tag_filter.strip():
+    needle = tag_filter.strip().lower()
+    images = [
+        img for img in images
+        if needle in " ".join(img.get("tags") or []).lower()
+        or needle in (img.get("id") or "").lower()
+    ]
+
+images = sorted(images, key=lambda i: i.get("size_bytes", 0), reverse=True)
 
 if not images:
     st.info("No images found.")
@@ -67,12 +88,18 @@ else:
             "Size": bytes_to_human(img.get("size_bytes")),
         })
     df = pd.DataFrame(rows)
+    st.caption(f"{len(images)} image(s), largest first.")
     st.dataframe(df, width="stretch", hide_index=True)
 
     st.divider()
     st.subheader("Image detail & removal")
+    if len(images) > detail_limit:
+        st.caption(
+            f"Showing cards for the {detail_limit} largest images — "
+            "narrow the filter to reach the rest."
+        )
 
-    for img in images:
+    for img in images[:detail_limit]:
         img_id = img.get("id", "")
         tags = img.get("tags") or ["<none>"]
         label = tags[0] if tags else img_id[:12]
@@ -91,7 +118,9 @@ else:
 
                 if st.toggle("Show full inspect", key=f"inspect_{img_id}"):
                     detail = c.get_image(img_id)
-                    if detail:
+                    if detail is None:
+                        st.error(c.last_error() or "Could not inspect image.")
+                    else:
                         for field in ("architecture", "os", "author", "cmd", "entrypoint"):
                             val = detail.get(field)
                             if val:
@@ -107,10 +136,12 @@ else:
                     st.warning("Remove this image?")
                     if st.button("Yes, remove", key=f"yes_img_{img_id}"):
                         result = c.remove_image(img_id, force=True)
-                        if result is not None:
-                            st.success("Removed.")
                         st.session_state.pop(confirm_key, None)
-                        st.rerun()
+                        if result is None:
+                            st.error(c.last_error() or "Remove failed.")
+                        else:
+                            st.success("Removed.")
+                            st.rerun()
                     if st.button("Cancel", key=f"no_img_{img_id}"):
                         st.session_state.pop(confirm_key, None)
                         st.rerun()

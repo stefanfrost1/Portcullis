@@ -5,7 +5,7 @@ from src.models.schemas import APIResponse, ImagePullRequest
 from src.routers._auth import require_admin
 from src.services import docker_service as ds
 
-router = APIRouter(prefix="/images", tags=["Images"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/images", tags=["Images"])
 
 
 @router.get("", summary="List images", response_model=APIResponse)
@@ -31,6 +31,7 @@ def remove_image(
     image_id: str,
     force: bool = Query(False),
     no_prune: bool = Query(False, description="Do not delete untagged parent layers"),
+    _: None = Depends(require_admin),
 ):
     try:
         ds.remove_image(image_id, force=force, no_prune=no_prune)
@@ -42,7 +43,7 @@ def remove_image(
 
 
 @router.post("/pull", summary="Pull an image from a registry", response_model=APIResponse)
-def pull_image(body: ImagePullRequest):
+def pull_image(body: ImagePullRequest, _: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.pull_image(body.repository, tag=body.tag))
     except APIError as exc:
@@ -50,7 +51,7 @@ def pull_image(body: ImagePullRequest):
 
 
 @router.post("/prune", summary="Remove unused (dangling) images", response_model=APIResponse)
-def prune_images():
+def prune_images(_: None = Depends(require_admin)):
     try:
         return APIResponse(data=ds.prune_images())
     except APIError as exc:

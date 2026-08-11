@@ -37,11 +37,26 @@ def client() -> EngineClient:
 
 # ---------------------------------------------------------------------------
 # Auto-refresh
+#
+# The refresh timer is armed at the *bottom* of this script, after the data has
+# been fetched. Arming it up here restarts the page mid-fetch on a slow host,
+# which leaves the dashboard permanently loading.
 # ---------------------------------------------------------------------------
 
 cfg = get_config()
-refresh_ms = cfg["refresh_interval"] * 1000
-st_autorefresh(interval=refresh_ms, key="dashboard_refresh")
+
+with st.sidebar:
+    auto_refresh = st.checkbox("Auto-refresh", value=True)
+    refresh_secs = st.slider(
+        "Refresh interval (s)",
+        min_value=5,
+        max_value=120,
+        value=max(5, cfg["refresh_interval"]),
+        step=5,
+        disabled=not auto_refresh,
+    )
+    if st.button("↻ Refresh now"):
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Page header
@@ -65,7 +80,9 @@ with col_h2:
     st.markdown(f"**Redis** {health_badge(redis_ok)}")
 with col_h3:
     import datetime
-    st.caption(f"Last updated: {datetime.datetime.now().strftime('%H:%M:%S')} · auto-refresh every {cfg['refresh_interval']}s")
+    stamp = datetime.datetime.now().strftime("%H:%M:%S")
+    refresh_note = f"auto-refresh every {refresh_secs}s" if auto_refresh else "auto-refresh off"
+    st.caption(f"Last updated: {stamp} · {refresh_note}")
 
 st.divider()
 
@@ -73,10 +90,11 @@ st.divider()
 # Overview data
 # ---------------------------------------------------------------------------
 
-overview = c.get_overview()
+with st.spinner("Loading environment overview…"):
+    overview = c.get_overview()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
+if c.last_error():
+    st.error(c.last_error())
 
 # Safe accessors
 docker_data = (overview or {}).get("docker", {}) or {}
@@ -243,3 +261,10 @@ with chart_col2:
             font=dict(color="#fafafa"),
         )
         st.plotly_chart(fig2, width="stretch")
+
+# ---------------------------------------------------------------------------
+# Arm the refresh timer last — see the note at the top of this file.
+# ---------------------------------------------------------------------------
+
+if auto_refresh:
+    st_autorefresh(interval=refresh_secs * 1000, key="dashboard_refresh")

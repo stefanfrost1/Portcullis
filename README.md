@@ -173,6 +173,27 @@ MYENGINE_URL=http://localhost:8000 streamlit run app.py
 | `API_KEY` | _(empty)_ | The API key value (used when auth is enabled) |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
 | `PORT` | `8000` | Uvicorn listen port |
+| `DOCKER_TIMEOUT` | `30` | Docker socket read timeout (seconds) |
+| `DOCKER_MAX_POOL_SIZE` | `32` | Max concurrent connections to the Docker daemon |
+| `DISK_USAGE_CACHE_TTL` | `60` | Seconds to cache `docker system df` (0 disables) |
+
+---
+
+## Roles
+
+Portcullis reads the reverse proxy's `X-User-Groups` header (set by Caddy's
+`authp`) to decide what a caller may do:
+
+| Role | Header contains | Can do |
+|---|---|---|
+| `admin` | `authp/admin` | Everything, including create / remove / config changes |
+| `developer` | `authp/user` | Read-only |
+| `reader` | _(no header)_ | Read-only |
+
+Every `GET` is available to all three; only state-changing calls require
+`admin`. The Streamlit frontend forwards the header from the browser request,
+so an admin keeps admin rights through the UI. Container removal is disabled
+outright — `DELETE /containers/{id}` always returns 403.
 
 ---
 

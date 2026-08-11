@@ -31,12 +31,18 @@ def system_info():
 @router.get(
     "/system/df",
     summary="Docker disk usage",
-    description="Images, containers, volumes, and build cache disk usage.",
+    description=(
+        "Images, containers, volumes, and build cache disk usage, plus a "
+        "`summary` block with per-category byte totals.\n\n"
+        "`docker system df` is expensive on hosts with many images, so results "
+        "are cached (see `DISK_USAGE_CACHE_TTL`). Pass `refresh=true` to force "
+        "a fresh read."
+    ),
     response_model=APIResponse,
 )
-def disk_usage():
+def disk_usage(refresh: bool = Query(False, description="Bypass the disk-usage cache")):
     try:
-        return APIResponse(data=ds.get_disk_usage())
+        return APIResponse(data=ds.get_disk_usage(force_refresh=refresh))
     except APIError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

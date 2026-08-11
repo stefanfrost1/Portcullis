@@ -7,6 +7,8 @@ serialize them with Pydantic without touching the SDK objects directly.
 
 import logging
 import re
+import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
@@ -20,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 from datetime import timedelta
 
+from src.config import settings
 from src.models.schemas import (
     ContainerDetail,
     ContainerStats,
@@ -43,10 +46,18 @@ _client: docker.DockerClient | None = None
 
 
 def _docker_client() -> docker.DockerClient:
-    """Return a cached Docker client (lazy-initialised singleton)."""
+    """Return a cached Docker client (lazy-initialised singleton).
+
+    `max_pool_size` must exceed the worker count of the batch helpers below,
+    otherwise threads contend for a small connection pool and calls that fan
+    out over every container serialise behind it.
+    """
     global _client
     if _client is None:
-        _client = docker.from_env()
+        _client = docker.from_env(
+            timeout=settings.DOCKER_TIMEOUT,
+            max_pool_size=settings.DOCKER_MAX_POOL_SIZE,
+        )
     return _client
 
 
@@ -59,6 +70,46 @@ def close_docker_client() -> None:
         except Exception:
             pass
         _client = None
+
+
+def _batch_deadline(item_count: int, max_workers: int, per_item_timeout: float) -> float:
+    """Overall budget for a fan-out call.
+
+    A fixed budget starves hosts with more containers than workers: the last
+    wave never gets a chance to finish. Allow one per-item timeout per wave,
+    plus slack for the round trips.
+    """
+    waves = max(1, -(-item_count // max(1, max_workers)))
+    return per_item_timeout * waves + 5
+
+
+def _drain_futures(
+    futures: dict,
+    per_item_timeout: float,
+    overall_timeout: float,
+) -> Generator[tuple, None, None]:
+    """Yield (item, result, error) for every future without ever raising.
+
+    `as_completed(..., timeout=...)` raises once the *overall* deadline passes,
+    which would throw away the results that already completed and fail the whole
+    request. This drains whatever is ready and reports the stragglers as errors.
+    """
+    pending = dict(futures)
+    try:
+        for future in as_completed(list(futures), timeout=overall_timeout):
+            item = pending.pop(future)
+            try:
+                yield item, future.result(timeout=per_item_timeout), None
+            except FutureTimeoutError:
+                yield item, None, "timeout"
+            except Exception as exc:
+                yield item, None, str(exc)
+    except FutureTimeoutError:
+        pass
+
+    for future, item in pending.items():
+        future.cancel()
+        yield item, None, "timeout"
 
 
 def _parse_iso(ts: Optional[str]) -> Optional[str]:
@@ -441,24 +492,28 @@ def get_all_container_logs(
     results: list[dict] = []
     errors: list[dict] = []
 
-    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+    pool = ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS)
+    try:
         futures = {pool.submit(_fetch, c): c for c in containers}
-        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
-            c = futures[future]
-            try:
-                results.append(future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT))
-            except FutureTimeoutError:
+        for c, result, error in _drain_futures(
+            futures,
+            _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT,
+            _batch_deadline(
+                len(containers),
+                _GLOBAL_SEARCH_MAX_WORKERS,
+                _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT,
+            ),
+        ):
+            if error:
                 errors.append({
                     "container_id": c.id,
                     "container_name": c.name.lstrip("/"),
-                    "error": "fetch timeout",
+                    "error": "fetch timeout" if error == "timeout" else error,
                 })
-            except Exception as exc:
-                errors.append({
-                    "container_id": c.id,
-                    "container_name": c.name.lstrip("/"),
-                    "error": str(exc),
-                })
+            else:
+                results.append(result)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     results.sort(key=lambda r: r["container_name"])
     return {
@@ -532,26 +587,28 @@ def global_search_logs(
     results: list[dict] = []
     errors: list[dict] = []
 
-    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+    pool = ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS)
+    try:
         futures = {pool.submit(_search_one, c): c for c in containers}
-        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
-            c = futures[future]
-            try:
-                result = future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT)
-                if result["match_count"] > 0:
-                    results.append(result)
-            except FutureTimeoutError:
+        for c, result, error in _drain_futures(
+            futures,
+            _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT,
+            _batch_deadline(
+                len(containers),
+                _GLOBAL_SEARCH_MAX_WORKERS,
+                _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT,
+            ),
+        ):
+            if error:
                 errors.append({
                     "container_id": c.id,
                     "container_name": c.name.lstrip("/"),
-                    "error": "search timeout",
+                    "error": "search timeout" if error == "timeout" else error,
                 })
-            except Exception as exc:
-                errors.append({
-                    "container_id": c.id,
-                    "container_name": c.name.lstrip("/"),
-                    "error": str(exc),
-                })
+            elif result["match_count"] > 0:
+                results.append(result)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     results.sort(key=lambda r: r["container_name"])
     total_matched = sum(r["match_count"] for r in results)
@@ -635,26 +692,28 @@ def global_logs_context(
     results: list[dict] = []
     errors: list[dict] = []
 
-    with ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS) as pool:
+    pool = ThreadPoolExecutor(max_workers=_GLOBAL_SEARCH_MAX_WORKERS)
+    try:
         futures = {pool.submit(_fetch_one, c): c for c in containers}
-        for future in as_completed(futures, timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT + 5):
-            c = futures[future]
-            try:
-                result = future.result(timeout=_GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT)
-                if result["count"] > 0:
-                    results.append(result)
-            except FutureTimeoutError:
+        for c, result, error in _drain_futures(
+            futures,
+            _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT,
+            _batch_deadline(
+                len(containers),
+                _GLOBAL_SEARCH_MAX_WORKERS,
+                _GLOBAL_SEARCH_PER_CONTAINER_TIMEOUT,
+            ),
+        ):
+            if error:
                 errors.append({
                     "container_id": c.id,
                     "container_name": c.name.lstrip("/"),
-                    "error": "fetch timeout",
+                    "error": "fetch timeout" if error == "timeout" else error,
                 })
-            except Exception as exc:
-                errors.append({
-                    "container_id": c.id,
-                    "container_name": c.name.lstrip("/"),
-                    "error": str(exc),
-                })
+            elif result["count"] > 0:
+                results.append(result)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     results.sort(key=lambda r: r["container_name"])
     return {
@@ -889,14 +948,99 @@ def get_system_info() -> dict:
     }
 
 
-def get_disk_usage() -> dict:
-    client = _docker_client()
-    df = client.df()
+_df_cache: dict = {"fetched_at": 0.0, "data": None}
+_df_lock = threading.Lock()
+
+
+def _raw_disk_usage(force_refresh: bool = False) -> dict:
+    """`docker system df`, memoised for DISK_USAGE_CACHE_TTL seconds.
+
+    On hosts with hundreds of images this call takes many seconds — long enough
+    that an auto-refreshing dashboard never finishes a request before starting
+    the next one. Disk usage moves slowly, so a short cache is safe.
+    """
+    ttl = settings.DISK_USAGE_CACHE_TTL
+    with _df_lock:
+        age = time.monotonic() - _df_cache["fetched_at"]
+        if not force_refresh and _df_cache["data"] is not None and age < ttl:
+            return _df_cache["data"]
+
+        raw = _docker_client().df()
+        _df_cache["data"] = raw
+        _df_cache["fetched_at"] = time.monotonic()
+        return raw
+
+
+def get_disk_usage(force_refresh: bool = False) -> dict:
+    """Normalised disk-usage breakdown.
+
+    Docker returns CamelCase SDK payloads; everything else in this service layer
+    speaks snake_case, so the entries are flattened to the fields the API
+    actually documents.
+    """
+    df = _raw_disk_usage(force_refresh=force_refresh)
+
+    images = [
+        {
+            "id": img.get("Id", ""),
+            "tags": img.get("RepoTags") or [],
+            "created": img.get("Created"),
+            "size_bytes": img.get("Size", 0) or 0,
+            "shared_size_bytes": img.get("SharedSize", 0) or 0,
+            "containers": img.get("Containers", 0),
+        }
+        for img in (df.get("Images") or [])
+    ]
+
+    containers = [
+        {
+            "id": ct.get("Id", ""),
+            "name": (ct.get("Names") or [""])[0].lstrip("/"),
+            "image": ct.get("Image", ""),
+            "state": ct.get("State", ""),
+            "status": ct.get("Status", ""),
+            "size_bytes": ct.get("SizeRw", 0) or 0,
+            "size_root_fs_bytes": ct.get("SizeRootFs", 0) or 0,
+        }
+        for ct in (df.get("Containers") or [])
+    ]
+
+    volumes = [
+        {
+            "name": vol.get("Name", ""),
+            "driver": vol.get("Driver", ""),
+            "size_bytes": (vol.get("UsageData") or {}).get("Size", 0) or 0,
+            "ref_count": (vol.get("UsageData") or {}).get("RefCount", 0) or 0,
+        }
+        for vol in (df.get("Volumes") or [])
+    ]
+
+    build_cache = [
+        {
+            "id": entry.get("ID", ""),
+            "type": entry.get("Type", ""),
+            "in_use": entry.get("InUse", False),
+            "shared": entry.get("Shared", False),
+            "size_bytes": entry.get("Size", 0) or 0,
+        }
+        for entry in (df.get("BuildCache") or [])
+    ]
+
+    def _total(items: list[dict]) -> int:
+        return sum(item["size_bytes"] for item in items)
+
     return {
-        "images": df.get("Images") or [],
-        "containers": df.get("Containers") or [],
-        "volumes": df.get("Volumes") or [],
-        "build_cache": df.get("BuildCache") or [],
+        "images": images,
+        "containers": containers,
+        "volumes": volumes,
+        "build_cache": build_cache,
+        "summary": {
+            "images_bytes": _total(images),
+            "containers_bytes": _total(containers),
+            "volumes_bytes": _total(volumes),
+            "build_cache_bytes": _total(build_cache),
+            "total_bytes": _total(images) + _total(containers) + _total(volumes) + _total(build_cache),
+        },
     }
 
 
@@ -924,18 +1068,23 @@ def get_all_container_stats(
     def _fetch(c) -> dict:
         return get_container_stats(c.id)
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    pool = ThreadPoolExecutor(max_workers=max_workers)
+    try:
         futures = {pool.submit(_fetch, c): c for c in running}
-        for future in as_completed(futures, timeout=timeout_seconds + 5):
-            c = futures[future]
-            try:
-                result = future.result(timeout=timeout_seconds)
+        deadline = _batch_deadline(len(running), max_workers, timeout_seconds)
+        for c, result, error in _drain_futures(futures, timeout_seconds, deadline):
+            if error:
+                errors.append({
+                    "container_id": c.id,
+                    "name": c.name.lstrip("/"),
+                    "error": "stats timeout" if error == "timeout" else error,
+                })
+            else:
                 stats_list.append(result)
-            except FutureTimeoutError:
-                errors.append({"container_id": c.id, "name": c.name.lstrip("/"), "error": "stats timeout"})
-            except Exception as exc:
-                errors.append({"container_id": c.id, "name": c.name.lstrip("/"), "error": str(exc)})
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
+    stats_list.sort(key=lambda s: s["name"])
     return {"containers": stats_list, "count": len(stats_list), "errors": errors}
 
 
@@ -991,11 +1140,11 @@ def get_compose_groups() -> list[dict]:
 def get_docker_overview() -> dict:
     """
     Minimal Docker snapshot for the overview endpoint.
-    Makes two Docker API calls: info() and df().
+    Makes two Docker API calls: info() and a (cached) df().
     """
     client = _docker_client()
     info = client.info()
-    df = client.df()
+    df = _raw_disk_usage()
 
     images_list = df.get("Images") or []
     total_image_bytes = sum(img.get("Size", 0) for img in images_list)
@@ -1012,6 +1161,7 @@ def get_docker_overview() -> dict:
     compose_projects = get_compose_groups()
 
     return {
+        "status": "ok",
         "containers": {
             "running": info.get("ContainersRunning", 0),
             "paused": info.get("ContainersPaused", 0),

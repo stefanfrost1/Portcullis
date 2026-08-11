@@ -9,6 +9,12 @@ Roles returned by get_role():
   "developer" — authp/user group present (no admin)
   "reader"    — no recognised group header (fallback)
 
+Policy: read endpoints (GET) are available to every caller that reaches the
+service; only state-changing operations are gated behind `require_admin`.
+Never attach `require_admin` as a router-level dependency — that also blocks
+reads, and callers such as the Streamlit frontend only forward the group
+header when the browser request carried one.
+
 Usage in route handlers:
 
     from fastapi import Depends
