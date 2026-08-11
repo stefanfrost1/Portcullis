@@ -140,6 +140,18 @@ async def request_id_middleware(request: Request, call_next):
 # Request logging
 # ---------------------------------------------------------------------------
 
+def _caller_host(request: Request) -> str:
+    """Best-effort client host.
+
+    Behind Caddy the socket peer is the proxy, so prefer the first hop in
+    `X-Forwarded-For` and fall back to the direct peer address.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "-"
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     t0 = time.perf_counter()
@@ -147,11 +159,12 @@ async def log_requests(request: Request, call_next):
     duration_ms = round((time.perf_counter() - t0) * 1000)
     req_id = response.headers.get("X-Request-ID", "-")
     logger.info(
-        "%s %s → %s  (%dms)  req=%s",
+        "%s %s → %s  (%dms)  from=%s  req=%s",
         request.method,
         request.url.path,
         response.status_code,
         duration_ms,
+        _caller_host(request),
         req_id,
     )
     return response

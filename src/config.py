@@ -36,16 +36,21 @@ class Settings(BaseSettings):
     # `docker system df` is expensive on hosts with many images; results are
     # cached for this many seconds. Set to 0 to disable caching.
     DISK_USAGE_CACHE_TTL: int = 60
+    # `docker system df` walks every image layer, container writable layer, and
+    # volume, so on image-heavy hosts it can run far longer than a normal call.
+    # It gets its own (larger) socket timeout so it does not trip DOCKER_TIMEOUT
+    # and return a 500; the result is then cached for DISK_USAGE_CACHE_TTL.
+    DISK_USAGE_TIMEOUT: int = 120
 
     # Compose project scope.
-    # When set, every Docker listing (containers, their logs/stats, networks,
-    # volumes) is filtered daemon-side to resources labelled
+    # When set, the operational Docker views (containers, their logs/stats/groups,
+    # and volumes) are filtered daemon-side to resources labelled
     # `com.docker.compose.project=<value>`. This both scopes the UI to a single
     # project and cuts overhead — the daemon never returns, and Portcullis never
     # inspects, containers outside the project.
     # Empty string (default) = no filter, i.e. the previous host-wide behaviour.
-    # Images are always host-wide (Compose does not stamp the project label on
-    # the images it pulls, so filtering them would hide everything).
+    # Images and networks stay host-wide (they are reference resources; Compose
+    # does not stamp the project label on pulled images).
     COMPOSE_PROJECT: str = ""
 
     # Redis connection

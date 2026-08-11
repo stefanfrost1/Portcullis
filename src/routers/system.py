@@ -11,8 +11,9 @@ import asyncio
 import json
 from typing import Optional
 
+import requests
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-from docker.errors import APIError
+from docker.errors import APIError, DockerException
 
 from src.models.schemas import APIResponse
 from src.services import docker_service as ds
@@ -43,8 +44,11 @@ def system_info():
 def disk_usage(refresh: bool = Query(False, description="Bypass the disk-usage cache")):
     try:
         return APIResponse(data=ds.get_disk_usage(force_refresh=refresh))
-    except APIError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except (DockerException, requests.RequestException) as exc:
+        # `docker system df` timing out or the daemon being unreachable is a
+        # transient/availability condition, not an internal bug — report it as
+        # such with the underlying reason instead of a generic 500.
+        raise HTTPException(status_code=503, detail=f"Disk usage unavailable: {exc}")
 
 
 @router.websocket("/system/events")

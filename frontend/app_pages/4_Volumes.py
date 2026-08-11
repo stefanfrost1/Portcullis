@@ -12,6 +12,10 @@ from utils.api_client import EngineClient, get_config
 st.set_page_config(page_title="Volumes", page_icon="💾", layout="wide")
 st.title("💾 Volumes")
 
+_cfg = get_config()
+if _cfg.get("compose_project"):
+    st.caption(f"🔒 Scoped to Compose project: **{_cfg['compose_project']}**")
+
 
 @st.cache_resource
 def get_client() -> EngineClient:

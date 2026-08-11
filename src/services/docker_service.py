@@ -43,6 +43,7 @@ from src.models.schemas import (
 # ---------------------------------------------------------------------------
 
 _client: docker.DockerClient | None = None
+_df_client: docker.DockerClient | None = None
 
 
 def _docker_client() -> docker.DockerClient:
@@ -61,15 +62,34 @@ def _docker_client() -> docker.DockerClient:
     return _client
 
 
+def _disk_usage_client() -> docker.DockerClient:
+    """A separate client with a longer timeout, used only by `system df`.
+
+    `docker system df` can take much longer than a normal call on image-heavy
+    hosts; giving it its own generous timeout keeps it from tripping
+    DOCKER_TIMEOUT (which surfaced as a 500) without making every other call
+    wait that long.
+    """
+    global _df_client
+    if _df_client is None:
+        _df_client = docker.from_env(
+            timeout=settings.DISK_USAGE_TIMEOUT,
+            max_pool_size=settings.DOCKER_MAX_POOL_SIZE,
+        )
+    return _df_client
+
+
 def close_docker_client() -> None:
-    """Close the Docker client connection. Called from the app lifespan shutdown."""
-    global _client
-    if _client is not None:
-        try:
-            _client.close()
-        except Exception:
-            pass
-        _client = None
+    """Close the Docker client connections. Called from the app lifespan shutdown."""
+    global _client, _df_client
+    for attr in ("_client", "_df_client"):
+        client = globals().get(attr)
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+            globals()[attr] = None
 
 
 _COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
@@ -887,8 +907,10 @@ def _network_summary(net) -> dict:
 
 
 def list_networks() -> list[dict]:
+    # Networks are host-wide reference resources — intentionally not scoped to
+    # COMPOSE_PROJECT (unlike containers/volumes).
     client = _docker_client()
-    return [_network_summary(n) for n in client.networks.list(filters=_project_filters())]
+    return [_network_summary(n) for n in client.networks.list()]
 
 
 def get_network(network_id: str) -> dict:
@@ -1012,7 +1034,11 @@ def _raw_disk_usage(force_refresh: bool = False) -> dict:
         if not force_refresh and _df_cache["data"] is not None and age < ttl:
             return _df_cache["data"]
 
-        raw = _docker_client().df()
+        try:
+            raw = _disk_usage_client().df()
+        except Exception:
+            logger.warning("docker system df failed", exc_info=True)
+            raise
         _df_cache["data"] = raw
         _df_cache["fetched_at"] = time.monotonic()
         return raw
@@ -1199,9 +1225,9 @@ def get_docker_overview() -> dict:
     df = _raw_disk_usage()
 
     images_list = df.get("Images") or []
-    total_image_bytes = sum(img.get("Size", 0) for img in images_list)
+    total_image_bytes = sum((img.get("Size") or 0) for img in images_list)
     reclaimable_image_bytes = sum(
-        img.get("Size", 0) for img in images_list
+        (img.get("Size") or 0) for img in images_list
         if not img.get("Containers")
     )
 
@@ -1238,7 +1264,7 @@ def get_docker_overview() -> dict:
         images_count = info.get("Images", 0)
 
     total_volume_bytes = sum(
-        (v.get("UsageData") or {}).get("Size", 0) for v in volumes_list
+        ((v.get("UsageData") or {}).get("Size") or 0) for v in volumes_list
     )
 
     compose_projects = get_compose_groups()

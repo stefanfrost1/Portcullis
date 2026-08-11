@@ -13,8 +13,10 @@ from utils.api_client import EngineClient, get_config
 from utils.formatting import bytes_to_human, health_badge
 
 
+_dashboard_title = get_config()["dashboard_title"]
+
 st.set_page_config(
-    page_title="MyEngine Dashboard",
+    page_title=_dashboard_title,
     page_icon="🐳",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -62,7 +64,7 @@ with st.sidebar:
 # Page header
 # ---------------------------------------------------------------------------
 
-st.title("🐳 MyEngine Dashboard")
+st.title(f"🐳 {_dashboard_title}")
 
 if cfg.get("compose_project"):
     st.caption(f"🔒 Scoped to Compose project: **{cfg['compose_project']}**")

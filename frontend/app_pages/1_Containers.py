@@ -133,6 +133,15 @@ with tab_all:
                                 st.rerun()
 
                     st.write("---")
+                    if st.button("📋 View logs", key=f"logs_{ct_id}"):
+                        # Hand the Logs page a preselected container, then jump.
+                        st.session_state["selected_id"] = ct_id
+                        st.session_state["selected_name"] = ct_name
+                        for _k in ("logs_cache", "logs_cache_key",
+                                   "search_results", "ctx_state"):
+                            st.session_state.pop(_k, None)
+                        st.switch_page("app_pages/10_Log_Search.py")
+
                     # Removal is disabled server-side (DELETE /containers/{id}
                     # always returns 403), so no button is offered here.
                     st.caption("Removal is disabled by the API.")

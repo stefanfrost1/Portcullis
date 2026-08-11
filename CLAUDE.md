@@ -183,7 +183,7 @@ All volume endpoints require 🔒 admin.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/system/info` | Docker daemon info + version |
-| GET | `/system/df` | Disk usage breakdown (cached `DISK_USAGE_CACHE_TTL` seconds; `?refresh=true` to recompute) |
+| GET | `/system/df` | Disk usage breakdown (cached `DISK_USAGE_CACHE_TTL` seconds; own longer `DISK_USAGE_TIMEOUT`; `?refresh=true` to recompute; 503 with reason if the daemon call times out/fails) |
 | WS  | `/system/events` | Real-time Docker daemon event stream |
 | GET | `/health` | Health check — 200 if Docker reachable, 503 otherwise |
 
@@ -345,7 +345,8 @@ Application settings live in `src/config.py` and are loaded from environment. Bu
 | `DOCKER_TIMEOUT`        | `30`                                         | Docker SDK client timeout (seconds)                 |
 | `DOCKER_MAX_POOL_SIZE`  | `32`                                         | Docker SDK connection pool size                     |
 | `DISK_USAGE_CACHE_TTL`  | `60`                                         | Seconds to cache `GET /system/df` results           |
-| `COMPOSE_PROJECT`       | `""`                                         | Scope all Docker listings to one Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
+| `DISK_USAGE_TIMEOUT`    | `120`                                        | Dedicated (longer) socket timeout for the expensive `docker system df` call |
+| `COMPOSE_PROJECT`       | `""`                                         | Scope operational Docker views (containers/volumes/logs) to one Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
 | `REDIS_HOST`            | `redis`                                      | Redis hostname (use service name in Compose)        |
 | `REDIS_PORT`            | `6379`                                       | Redis port                                          |
 | `REDIS_PASSWORD`        | `null`                                       | Redis password (omit if not set)                    |
@@ -376,7 +377,7 @@ The `build.sh`/`build.ps1` scripts take the registry and tag as flags (`-r`/`-t`
 1. **CORS** — configured from `CORS_ORIGINS`; `allow_credentials=True` is automatically disabled when `*` is used
 2. **Security headers** — `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`
 3. **Request ID** — attaches/echoes `X-Request-ID` header on every response
-4. **Request logging** — logs method, path, status, latency, and request ID
+4. **Request logging** — logs method, path, response status, latency, caller host (`X-Forwarded-For` first hop, else socket peer), and request ID
 5. **API key auth** — checks `X-API-Key` header when `API_KEY_ENABLED=true`; docs, OpenAPI, `/health`, and `/` are always exempt
 
 ### RBAC / Caddy header auth
@@ -402,12 +403,13 @@ lever: the daemon never returns, and Portcullis never inspects, containers
 outside the project.
 
 - **Scoped:** container list/stats/groups, the global log endpoints
-  (`/logs`, `/logs/search`, `/logs/context`), networks, volumes, and the
+  (`/logs`, `/logs/search`, `/logs/context`), volumes, and the
   container/volume/compose sections of `/overview` (which also gains a
   `project_scope` field).
-- **Not scoped:** images (Compose does not stamp the project label on pulled
-  images, so filtering would hide all of them) and single-resource inspects by
-  id/name (a caller with an id already has the resource).
+- **Not scoped (host-wide reference):** images and networks — reference
+  resources, and Compose does not stamp the project label on pulled images, so
+  filtering images would hide all of them. Also unscoped: single-resource
+  inspects by id/name (a caller with an id already has the resource).
 - Empty `COMPOSE_PROJECT` (default) preserves the previous host-wide behaviour.
 - The filter is applied at the SDK boundary via `_project_filters()`, which
   returns `None` when unset so calls are unchanged.
@@ -418,7 +420,7 @@ name, so they skip the per-container inspect that the SDK's default listing
 does. Use `_container_name()` to read a name off a sparse model.
 
 The frontend's own `COMPOSE_PROJECT` (optional, cosmetic) only drives a
-"Scoped to project" caption on the Containers and Dashboard pages; the actual
+"Scoped to project" caption on the Containers, Volumes, and Dashboard pages; the actual
 scoping is entirely backend-side.
 
 ### Error handling
@@ -448,21 +450,23 @@ The Streamlit frontend (`frontend/`) uses Streamlit's explicit `st.navigation` A
 
 | Group | Page | File |
 |-------|------|------|
-| Overview | Dashboard | `app_pages/Dashboard.py` |
-| Docker | Containers | `app_pages/1_Containers.py` |
-| Docker | Images | `app_pages/2_Images.py` |
-| Docker | Networks | `app_pages/3_Networks.py` |
-| Docker | Volumes | `app_pages/4_Volumes.py` |
+| Overview | Dashboard (renamable) | `app_pages/Dashboard.py` |
 | Docker | System | `app_pages/5_System.py` |
 | Docker | Logs | `app_pages/10_Log_Search.py` |
-| Redis | Redis Keys | `app_pages/6_Redis_Keys.py` |
+| Docker | Containers | `app_pages/1_Containers.py` |
 | Redis | Redis Server | `app_pages/7_Redis_Server.py` |
-| Redis | Redis Analysis | `app_pages/8_Redis_Analysis.py` |
 | Redis | Redis Queues | `app_pages/9_Redis_Queues.py` |
+| Redis | Redis Keys | `app_pages/6_Redis_Keys.py` |
+| Redis | Redis Analysis | `app_pages/8_Redis_Analysis.py` |
+| Resources | Volumes | `app_pages/4_Volumes.py` |
+| Resources | Networks | `app_pages/3_Networks.py` |
+| Resources | Images | `app_pages/2_Images.py` |
+
+Volumes, networks, and images sit in a **Resources** section below the day-to-day operational pages (volumes are still project-scoped when `COMPOSE_PROJECT` is set; networks and images stay host-wide). The Containers detail view has a **📋 View logs** button that preselects the container (via `st.session_state`) and jumps to the Logs page.
 
 All API calls go through `frontend/utils/api_client.py`, which wraps every backend endpoint in a typed Python method. Add new API methods there when adding endpoints. `frontend/utils/formatting.py` holds shared display helpers (byte formatting, uptime strings, etc.).
 
-The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. Optional `COMPOSE_PROJECT` (mirror of the backend value) only drives the "Scoped to project" caption — set it on the frontend when the backend is scoped so the UI labels the subset.
+The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`). Optional `COMPOSE_PROJECT` (mirror of the backend value) only drives the "Scoped to project" caption — set it on the frontend when the backend is scoped so the UI labels the subset.
 
 ---
 

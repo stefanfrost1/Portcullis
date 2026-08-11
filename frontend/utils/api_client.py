@@ -33,6 +33,10 @@ import streamlit as st
 # the default budget on a busy host.
 DEFAULT_TIMEOUT = 15
 SLOW_TIMEOUT = 60
+# `docker system df` can run for a while on image-heavy hosts; allow slightly
+# more than the backend's own disk-usage budget so a first (uncached) load
+# completes instead of the UI timing out while the daemon is still walking.
+DISK_USAGE_TIMEOUT = 125
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +60,11 @@ def get_config() -> dict:
         # Cosmetic only: the backend does the actual scoping via its own
         # COMPOSE_PROJECT. Set the same value here to label the scoped views.
         "compose_project": (_secret("COMPOSE_PROJECT", "") or "").strip(),
+        # Name shown for the overview page (nav item + header). Set per
+        # deployment so a project-scoped instance reads as that project.
+        "dashboard_title": (
+            _secret("DASHBOARD_TITLE") or _secret("PROJECT_NAME") or "Dashboard"
+        ),
     }
 
 
@@ -350,7 +359,7 @@ class EngineClient:
         return self._get(
             "/system/df",
             params={"refresh": str(refresh).lower()},
-            timeout=SLOW_TIMEOUT,
+            timeout=DISK_USAGE_TIMEOUT,
         )
 
     # ------------------------------------------------------------------

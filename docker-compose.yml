@@ -32,6 +32,7 @@ services:
       - MYENGINE_URL=http://portcullis:8000
       - MYENGINE_API_KEY=${API_KEY:-}
       - REFRESH_INTERVAL=${REFRESH_INTERVAL:-10}
+      # - DASHBOARD_TITLE=My Project    # renames the overview page (default "Dashboard")
       # - COMPOSE_PROJECT=myproject    # cosmetic: label the UI as scoped (match the backend value)
     depends_on:
       - portcullis
