@@ -36,9 +36,9 @@ Neither the Docker socket nor Redis is exposed to the UI directly. Destructive a
 Portcullis/
 ├── CLAUDE.md                    # This file
 ├── Dockerfile                   # Python 3.12-slim, non-root user, port 8000
-├── Makefile                     # Build/push targets (ghcr.io registry)
-├── build.sh                     # Build/push helper (Linux/macOS, Docker Hub)
-├── build.ps1                    # Build/push helper (Windows, Docker Hub)
+├── Makefile                     # Manual build/push fallback (Docker Hub)
+├── build.sh                     # Manual build/push helper (Linux/macOS)
+├── build.ps1                    # Manual build/push helper (Windows)
 ├── docker-compose.yml           # Full stack: prebuilt images + Redis
 ├── requirements.txt             # Backend Python dependencies
 ├── .github/
@@ -355,7 +355,7 @@ Build/deploy-only variables (not app config):
 
 | Variable    | Used by | Default | Description |
 |-------------|---------|---------|-------------|
-| `REGISTRY`  | Makefile / `build.*` | `ghcr.io/stefanfrost1` (Makefile), `simplitics1` (`build.*`) | Registry/namespace prefix for image names |
+| `REGISTRY`  | Makefile / `build.*` | `simplitics1` | Docker Hub namespace prefix for image names |
 | `TAG`       | Makefile | `latest` | Image tag for `make build`/`push` |
 | `IMAGE_TAG` | docker-compose | `latest` | Tag of the prebuilt images Compose pulls |
 
@@ -460,13 +460,16 @@ The interactive Swagger UI at `/api/v1/docs` can be used for manual endpoint tes
 | `portcullis-frontend` | `frontend/Dockerfile` | 8501 |
 
 Both images are published to Docker Hub under the **`simplitics1`** namespace
-(`simplitics1/portcullis`, `simplitics1/portcullis-frontend`).
+(`simplitics1/portcullis`, `simplitics1/portcullis-frontend`) — the only place
+they are published.
 
-### CI — GitHub Actions (primary path)
+### GitHub Actions is the builder
 
-`.github/workflows/docker-build.yml` builds and pushes both images to Docker
-Hub on every push to `main`, `master`, `feature/**`, and `release/**` (and via
-manual `workflow_dispatch`). Tagging:
+`.github/workflows/docker-build.yml` is the canonical build path: it builds and
+pushes both images to Docker Hub on every push to `main`, `master`,
+`feature/**`, and `release/**` (and via manual `workflow_dispatch`). You
+normally never build locally — merging to a branch is what publishes an image.
+Tagging:
 
 | Branch | Tag |
 |--------|-----|
@@ -476,11 +479,11 @@ manual `workflow_dispatch`). Tagging:
 
 Requires repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 
-### Build and push locally
+### Building locally (manual fallback)
 
-`build.sh` (Linux/macOS) and `build.ps1` (Windows) build both images, default
-the tag to the version in `src/main.py` (plus `latest`), and push to Docker Hub
-`simplitics1`:
+For local iteration without waiting on CI. `build.sh` (Linux/macOS) and
+`build.ps1` (Windows) build both images, default the tag to the version in
+`src/main.py` (plus `latest`), and push to Docker Hub `simplitics1`:
 
 ```bash
 ./build.sh                 # build both; tag from src/main.py + latest
@@ -493,8 +496,7 @@ the tag to the version in `src/main.py` (plus `latest`), and push to Docker Hub
 ./build.ps1 -Tag 3.2.0 -Push
 ```
 
-The `Makefile` is an alternative that targets the `ghcr.io/stefanfrost1`
-registry instead:
+The `Makefile` is a barebones equivalent (same `simplitics1` registry):
 
 ```bash
 make build          # build both     (build-backend / build-frontend individually)
@@ -647,9 +649,8 @@ Claude agents must develop on branches matching the pattern `claude/<session-id>
 | Lint | `flake8 src/` or `ruff check src/` |
 | Format | `black src/` |
 | Type check | `mypy src/` |
-| Build images (Docker Hub) | `./build.sh` / `./build.ps1` |
-| Build images (ghcr) | `make build` |
-| Push images | `./build.sh -p` or `make push` |
+| Publish images | push to a branch — GitHub Actions builds + pushes to `simplitics1` |
+| Build locally (manual) | `./build.sh` / `./build.ps1` / `make build` |
 
 ### Adding a new router
 

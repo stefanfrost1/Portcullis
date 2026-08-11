@@ -1,4 +1,7 @@
-REGISTRY ?= ghcr.io/stefanfrost1
+# Manual/local fallback for building the images. GitHub Actions
+# (.github/workflows/docker-build.yml) is the canonical builder and
+# publishes to Docker Hub (simplitics1) on push.
+REGISTRY ?= simplitics1
 TAG      ?= latest
 
 BACKEND_IMAGE  = $(REGISTRY)/portcullis:$(TAG)
