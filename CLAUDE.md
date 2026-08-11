@@ -349,6 +349,7 @@ Application settings live in `src/config.py` and are loaded from environment. Bu
 | `COMPOSE_PROJECT`       | `""`                                         | Scope operational Docker views (containers/volumes/logs) to one exact Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
 | `COMPOSE_PROJECTS`      | `""`                                         | Comma-separated list of exact Compose project names to scope to (OR) |
 | `COMPOSE_PROJECT_PREFIX`| `""`                                         | Scope to every Compose project whose name starts with this prefix |
+| `SCOPE_LABEL`           | `""`                                         | Scope by a custom Docker label you add yourself (`key=value` or bare `key`); takes precedence over the `COMPOSE_PROJECT*` vars; fully daemon-side |
 | `REDIS_HOST`            | `redis`                                      | Redis hostname (use service name in Compose)        |
 | `REDIS_PORT`            | `6379`                                       | Redis port                                          |
 | `REDIS_PASSWORD`        | `null`                                       | Redis password (omit if not set)                    |
@@ -399,16 +400,26 @@ Routers that perform mutations (write, delete, lifecycle actions) declare `requi
 ### Project scoping
 
 Scope the operational Docker views to one **or more** Compose projects via the
-`com.docker.compose.project` label. Three selectors, combined with OR:
+`com.docker.compose.project` label. Selectors, combined with OR:
 
 | Env var | Meaning |
 |---------|---------|
 | `COMPOSE_PROJECT` | a single exact project name |
 | `COMPOSE_PROJECTS` | comma-separated list of exact project names |
 | `COMPOSE_PROJECT_PREFIX` | match any project whose name starts with this prefix |
+| `SCOPE_LABEL` | a custom label you add to your Compose files (`key=value` or bare `key`) |
 
-Use a single one, or combine them (e.g. a prefix plus a couple of extra exact
-names). All empty (default) = host-wide, unchanged.
+Use a single one, or combine the `COMPOSE_PROJECT*` selectors (e.g. a prefix
+plus a couple of extra exact names). All empty (default) = host-wide, unchanged.
+
+`SCOPE_LABEL` is the cleanest way to group several Compose projects into one
+view: add the same label to your services (e.g. `labels: ["com.acme.stack=dev"]`)
+and set `SCOPE_LABEL=com.acme.stack=dev`. Because it is a single exact label it
+filters entirely daemon-side (no in-process narrowing) and **takes precedence**
+over the `COMPOSE_PROJECT*` vars. Caveat: a service's `labels:` land on the
+container only — add the same label to your `volumes:`/`networks:` definitions
+if you want those scoped too (the `com.docker.compose.project` label, by
+contrast, is applied by Compose to all three automatically).
 
 **How filtering happens** (`_project_filters()` + the `_list_scoped_*` helpers):
 
@@ -483,7 +494,7 @@ Volumes, networks, and images sit in a **Resources** section below the day-to-da
 
 All API calls go through `frontend/utils/api_client.py`, which wraps every backend endpoint in a typed Python method. Add new API methods there when adding endpoints. `frontend/utils/formatting.py` holds shared display helpers (byte formatting, uptime strings, etc.).
 
-The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`). The scope-mirror vars (`COMPOSE_PROJECT` / `COMPOSE_PROJECTS` / `COMPOSE_PROJECT_PREFIX`) are cosmetic on the frontend — they only drive the "Scoped to project(s)" caption; set them to match the backend so the UI labels the subset.
+The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`). The scope-mirror vars (`SCOPE_LABEL` / `COMPOSE_PROJECT` / `COMPOSE_PROJECTS` / `COMPOSE_PROJECT_PREFIX`) are cosmetic on the frontend — they only drive the "Scoped to project(s)" caption; set them to match the backend so the UI labels the subset.
 
 ---
 

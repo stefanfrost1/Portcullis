@@ -54,14 +54,18 @@ def get_config() -> dict:
             return os.environ.get(key, default)
 
     # Cosmetic only: the backend does the actual scoping. Mirror the same
-    # COMPOSE_PROJECT / COMPOSE_PROJECTS / COMPOSE_PROJECT_PREFIX values here to
-    # label the scoped views. Build a single human-readable scope string.
+    # SCOPE_LABEL / COMPOSE_PROJECT / COMPOSE_PROJECTS / COMPOSE_PROJECT_PREFIX
+    # values here to label the scoped views. Build a human-readable scope string.
+    _label = (_secret("SCOPE_LABEL", "") or "").strip()
     _prefix = (_secret("COMPOSE_PROJECT_PREFIX", "") or "").strip()
     _names = [n.strip() for n in (_secret("COMPOSE_PROJECTS", "") or "").split(",") if n.strip()]
     _single = (_secret("COMPOSE_PROJECT", "") or "").strip()
     if _single and _single not in _names:
         _names.append(_single)
-    _scope_parts = ([f"{_prefix}*"] if _prefix else []) + _names
+    if _label:
+        _scope_parts = [f"label {_label}"]
+    else:
+        _scope_parts = ([f"{_prefix}*"] if _prefix else []) + _names
 
     return {
         "base_url": (_secret("MYENGINE_URL", "http://localhost:8000")).rstrip("/"),

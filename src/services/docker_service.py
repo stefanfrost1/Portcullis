@@ -109,19 +109,30 @@ def _scope_prefix() -> str:
     return (settings.COMPOSE_PROJECT_PREFIX or "").strip()
 
 
+def _scope_label() -> str:
+    """Custom Docker label to scope by (SCOPE_LABEL), or ''.
+
+    A `key=value` or bare `key`. Takes precedence over the COMPOSE_PROJECT* vars
+    and is filtered entirely daemon-side (no in-process narrowing).
+    """
+    return (settings.SCOPE_LABEL or "").strip()
+
+
 def scope_active() -> bool:
-    """True when any project scope (single, list, or prefix) is configured."""
-    return bool(_scope_names() or _scope_prefix())
+    """True when any scope (custom label, single, list, or prefix) is configured."""
+    return bool(_scope_label() or _scope_names() or _scope_prefix())
 
 
 def project_scope() -> Optional[str]:
     """Human-readable description of the active scope, or None when unscoped.
 
-    Surfaced in `/overview` (`project_scope`); filtering itself uses
-    `_project_matches()`, not this string.
+    Surfaced in `/overview` (`project_scope`); filtering itself uses the
+    `_project_filters()` / `_project_matches()` pair, not this string.
     """
     if not scope_active():
         return None
+    if _scope_label():
+        return f"label {_scope_label()}"
     parts: list[str] = []
     prefix = _scope_prefix()
     if prefix:
@@ -155,7 +166,12 @@ def _exact_single() -> Optional[str]:
 
 
 def _needs_client_narrow() -> bool:
-    """True when the daemon filter alone is not precise enough (list/prefix)."""
+    """True when the daemon filter alone is not precise enough (list/prefix).
+
+    A custom SCOPE_LABEL and a single exact project are both fully daemon-side.
+    """
+    if _scope_label():
+        return False
     return scope_active() and _exact_single() is None
 
 
@@ -163,6 +179,7 @@ def _project_filters(extra: Optional[dict] = None) -> Optional[dict]:
     """Build a Docker API `filters` dict for the active scope.
 
     - Unscoped: passes `extra` through (or None).
+    - Custom label (`SCOPE_LABEL`): that exact label — fully daemon-side.
     - Single exact project: an exact `com.docker.compose.project=<name>` label —
       the daemon returns only that project's resources.
     - List / prefix: filters to resources that merely *have* a compose-project
@@ -170,8 +187,12 @@ def _project_filters(extra: Optional[dict] = None) -> Optional[dict]:
     """
     filters: dict = dict(extra or {})
     if scope_active():
-        exact = _exact_single()
-        label = f"{_COMPOSE_PROJECT_LABEL}={exact}" if exact else _COMPOSE_PROJECT_LABEL
+        custom = _scope_label()
+        if custom:
+            label = custom
+        else:
+            exact = _exact_single()
+            label = f"{_COMPOSE_PROJECT_LABEL}={exact}" if exact else _COMPOSE_PROJECT_LABEL
         existing = filters.get("label")
         if existing is None:
             filters["label"] = label

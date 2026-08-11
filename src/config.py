@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     COMPOSE_PROJECTS: str = ""
     COMPOSE_PROJECT_PREFIX: str = ""
 
+    # Custom-label scope (takes precedence over the COMPOSE_PROJECT* vars above).
+    # Scope by any Docker label you add to your Compose services yourself, e.g.
+    # `SCOPE_LABEL=com.acme.stack=dev`. A single exact `key=value` (or bare `key`
+    # for "has this label") is filtered entirely daemon-side — no in-process
+    # narrowing — so this is the cheapest and most explicit way to group several
+    # Compose projects into one view. Note: Compose applies a service's `labels:`
+    # to the container only, so add the same label to your `volumes:` (and
+    # `networks:`) definitions if you want those scoped too.
+    SCOPE_LABEL: str = ""
+
     # Redis connection
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
