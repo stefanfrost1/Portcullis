@@ -36,7 +36,6 @@ Neither the Docker socket nor Redis is exposed to the UI directly. Destructive a
 Portcullis/
 ├── CLAUDE.md                    # This file
 ├── Dockerfile                   # Python 3.12-slim, non-root user, port 8000
-├── Makefile                     # Manual build/push fallback (Docker Hub)
 ├── build.sh                     # Manual build/push helper (Linux/macOS)
 ├── build.ps1                    # Manual build/push helper (Windows)
 ├── docker-compose.yml           # Full stack: prebuilt images + Redis
@@ -334,7 +333,7 @@ docker compose up --build
 
 ### Environment Variables
 
-Application settings live in `src/config.py` and are loaded from environment. Build/deploy variables (`REGISTRY`, `TAG`, `IMAGE_TAG`) are read by the Makefile, the `build.*` scripts, and `docker-compose.yml` — not by the app at runtime.
+Application settings live in `src/config.py` and are loaded from environment. Build/deploy variables (`REGISTRY`, `IMAGE_TAG`) are read by `docker-compose.yml` — not by the app at runtime.
 
 | Variable                | Default                                      | Description                                         |
 |-------------------------|----------------------------------------------|-----------------------------------------------------|
@@ -355,9 +354,10 @@ Build/deploy-only variables (not app config):
 
 | Variable    | Used by | Default | Description |
 |-------------|---------|---------|-------------|
-| `REGISTRY`  | Makefile / `build.*` | `simplitics1` | Docker Hub namespace prefix for image names |
-| `TAG`       | Makefile | `latest` | Image tag for `make build`/`push` |
+| `REGISTRY`  | docker-compose | `simplitics1` | Docker Hub namespace prefix for image names |
 | `IMAGE_TAG` | docker-compose | `latest` | Tag of the prebuilt images Compose pulls |
+
+The `build.sh`/`build.ps1` scripts take the registry and tag as flags (`-r`/`-t`, `-Registry`/`-Tag`) rather than environment variables; the tag defaults to the version in `src/main.py`.
 
 **Production checklist:**
 
@@ -494,15 +494,6 @@ For local iteration without waiting on CI. `build.sh` (Linux/macOS) and
 
 ```powershell
 ./build.ps1 -Tag 3.2.0 -Push
-```
-
-The `Makefile` is a barebones equivalent (same `simplitics1` registry):
-
-```bash
-make build          # build both     (build-backend / build-frontend individually)
-make push           # push both
-make release        # build + push
-make release REGISTRY=docker.io/myorg TAG=1.2.3
 ```
 
 ### Running the stack
@@ -650,7 +641,7 @@ Claude agents must develop on branches matching the pattern `claude/<session-id>
 | Format | `black src/` |
 | Type check | `mypy src/` |
 | Publish images | push to a branch — GitHub Actions builds + pushes to `simplitics1` |
-| Build locally (manual) | `./build.sh` / `./build.ps1` / `make build` |
+| Build locally (manual) | `./build.sh` / `./build.ps1` |
 
 ### Adding a new router
 
