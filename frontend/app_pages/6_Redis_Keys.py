@@ -1,13 +1,13 @@
 """
-Redis Keys page — browse the keyspace and audit / edit key content.
+Redis Keys page — click-to-drill keyspace browser + editor.
 
-Two halves:
-  1. Browser  — cursor-paginated SCAN with type + TTL per key, bulk delete.
+  1. Browser  — cursor-paginated SCAN; click a key row to open it. Named sort
+                and a name filter narrow the current page.
   2. Inspector — full value view for the selected key (any type), with
-     pagination for large collections and type-appropriate editing.
+                pagination for large collections and type-appropriate editing,
+                plus a guarded delete (flush) of the whole key.
 
-The inspector can open any key by name, not just one from the current page,
-so keys beyond the scan window are still reachable.
+Any key can also be opened by name, so keys beyond the scan window are reachable.
 """
 
 import json
@@ -32,11 +32,19 @@ def get_client() -> EngineClient:
 c = get_client()
 
 SELECTED = "redis_selected_key"
+_TYPE_ICON = {
+    "string": "🔤", "hash": "🧩", "list": "📋",
+    "set": "🎯", "zset": "📊", "stream": "🌊",
+}
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _type_icon(t: str) -> str:
+    return _TYPE_ICON.get(t, "•")
+
 
 def _ttl_text(ttl) -> str:
     """Render a Redis TTL: -1 means no expiry, -2 means the key is gone."""
@@ -47,6 +55,13 @@ def _ttl_text(ttl) -> str:
     if ttl == -2:
         return "Expired / missing"
     return seconds_to_human(ttl)
+
+
+def _ttl_sort_key(ttl) -> float:
+    """Sort soonest-expiring first; no-expiry / missing sink to the bottom."""
+    if isinstance(ttl, int) and ttl >= 0:
+        return ttl
+    return float("inf")
 
 
 def _pretty(value: str):
@@ -78,8 +93,12 @@ def _export_button(key: str, payload) -> None:
 
 with st.sidebar:
     st.caption(f"Signed in as: **{current_role()}**")
-    pattern = st.text_input("Key pattern", value="*")
+    pattern = st.text_input("Key pattern", value="*", help="Glob over key names, e.g. user:*")
     key_type = st.selectbox("Type filter", ["all", "string", "hash", "list", "set", "zset", "stream"])
+    sort_choice = st.selectbox(
+        "Sort by", ["Key (A → Z)", "Key (Z → A)", "Type", "TTL (soonest)"], index=0
+    )
+    name_filter = st.text_input("Filter by name", value="", placeholder="substring…")
     page_size = st.selectbox("Keys per page", [25, 50, 100, 200], index=1)
     if st.button("↻ Refresh"):
         st.session_state["redis_cursor"] = 0
@@ -135,7 +154,7 @@ if "redis_cursor_history" not in st.session_state:
     st.session_state["redis_cursor_history"] = [0]
 
 # ---------------------------------------------------------------------------
-# Key browser
+# Key browser — click a row to drill in
 # ---------------------------------------------------------------------------
 
 st.subheader("Browser")
@@ -152,96 +171,80 @@ if result is None:
     result = {}
 
 # The API returns enriched entries: [{"key": ..., "type": ..., "ttl": ...}]
-entries = result.get("keys", []) or []
-key_names = [e["key"] if isinstance(e, dict) else str(e) for e in entries]
+entries = [e for e in (result.get("keys", []) or []) if isinstance(e, dict)]
 next_cursor = result.get("cursor", 0)
 
-if not key_names and st.session_state["redis_cursor"] == 0:
+# Named sort + name filter (applied to the current SCAN page).
+nf = name_filter.strip().lower()
+shown = [e for e in entries if not nf or nf in e.get("key", "").lower()]
+if sort_choice == "Key (A → Z)":
+    shown.sort(key=lambda e: e.get("key", "").lower())
+elif sort_choice == "Key (Z → A)":
+    shown.sort(key=lambda e: e.get("key", "").lower(), reverse=True)
+elif sort_choice == "Type":
+    shown.sort(key=lambda e: (e.get("type", ""), e.get("key", "").lower()))
+elif sort_choice == "TTL (soonest)":
+    shown.sort(key=lambda e: _ttl_sort_key(e.get("ttl")))
+
+if not entries and st.session_state["redis_cursor"] == 0:
     st.info("No keys found matching the filter.")
 else:
     st.caption(
-        f"Showing {len(key_names)} key(s). SCAN returns approximate page sizes; "
-        "an empty page does not mean the scan is finished."
+        f"Showing {len(shown)} of {len(entries)} key(s) on this page. SCAN returns "
+        "approximate page sizes; an empty page does not mean the scan is finished."
     )
 
     # Pagination controls
     col_prev, col_info, col_next = st.columns([1, 3, 1])
     history: list = st.session_state["redis_cursor_history"]
-
     with col_prev:
-        if len(history) > 1:
-            if st.button("◀ Prev"):
-                history.pop()
-                st.session_state["redis_cursor"] = history[-1]
-                st.rerun()
-
+        if len(history) > 1 and st.button("◀ Prev"):
+            history.pop()
+            st.session_state["redis_cursor"] = history[-1]
+            st.rerun()
     with col_next:
-        if next_cursor:
-            if st.button("Next ▶"):
-                history.append(next_cursor)
-                st.session_state["redis_cursor"] = next_cursor
-                st.rerun()
-
+        if next_cursor and st.button("Next ▶"):
+            history.append(next_cursor)
+            st.session_state["redis_cursor"] = next_cursor
+            st.rerun()
     with col_info:
         st.caption(
             f"Cursor: {st.session_state['redis_cursor']}"
             + ("" if next_cursor else " · scan complete")
         )
 
-    # Overview table
-    if entries:
-        st.dataframe(
-            pd.DataFrame([
-                {
-                    "Key": e.get("key", "?"),
-                    "Type": e.get("type", "?"),
-                    "TTL": _ttl_text(e.get("ttl")),
-                }
-                for e in entries if isinstance(e, dict)
-            ]),
-            width="stretch",
-            hide_index=True,
-        )
-
-    # Open a key in the inspector
-    if key_names:
-        col_pick, col_open = st.columns([4, 1])
-        with col_pick:
-            picked = st.selectbox("Open a key from this page", key_names, key="key_picker")
-        with col_open:
-            st.write("")
-            if st.button("🔍 Inspect", width="stretch"):
-                _select(picked)
+    # Clickable rows — inside a fixed-height scrollable box so the inspector
+    # below stays reachable even with a full page of keys.
+    st.markdown("**Click a key to open it**")
+    box = st.container(height=360)
+    with box:
+        if not shown:
+            st.caption("No keys on this page match the filter.")
+        for e in shown:
+            k = e.get("key", "?")
+            t = e.get("type", "?")
+            sel = st.session_state.get(SELECTED) == k
+            label = f"{'▶ ' if sel else ''}{_type_icon(t)} {k}  ·  {_ttl_text(e.get('ttl'))}"
+            if st.button(
+                label, key=f"krow_{k}", use_container_width=True,
+                type="primary" if sel else "secondary",
+            ):
+                _select(k)
                 st.rerun()
 
-    # Bulk delete
-    selected = st.multiselect(
-        "Select keys for bulk delete",
-        options=key_names,
-        default=[],
-        key="bulk_select",
-    )
-    if selected:
-        if st.session_state.get("confirm_bulk_delete"):
-            st.warning(f"Delete {len(selected)} key(s)?")
-            col_yes, col_no = st.columns(2)
-            with col_yes:
-                if st.button("Yes, delete all"):
-                    res = c.bulk_delete_redis_keys(selected)
-                    st.session_state.pop("confirm_bulk_delete", None)
-                    if res is None:
-                        st.error(c.last_error() or "Bulk delete failed.")
-                    else:
-                        st.success(f"Deleted {res.get('deleted', 0)} key(s).")
-                        st.rerun()
-            with col_no:
-                if st.button("Cancel bulk"):
-                    st.session_state.pop("confirm_bulk_delete", None)
+    # Bulk delete (secondary, guarded)
+    with st.expander("🗑 Bulk delete keys from this page"):
+        picked = st.multiselect("Select keys", options=[e.get("key") for e in shown], key="bulk_select")
+        if picked:
+            ok = st.checkbox(f"Yes, delete {len(picked)} key(s)", key="bulk_ok")
+            if st.button("Delete selected", disabled=not ok):
+                res = c.bulk_delete_redis_keys(picked)
+                if res is None:
+                    st.error(c.last_error() or "Bulk delete failed.")
+                else:
+                    st.success(f"Deleted {res.get('deleted', 0)} key(s).")
+                    st.session_state.pop("bulk_select", None)
                     st.rerun()
-        else:
-            if st.button(f"🗑 Delete selected ({len(selected)})"):
-                st.session_state["confirm_bulk_delete"] = True
-                st.rerun()
 
 st.divider()
 
@@ -251,24 +254,26 @@ st.divider()
 
 st.subheader("Inspector")
 
-col_key, col_go = st.columns([4, 1])
-with col_key:
-    typed_key = st.text_input(
-        "Key to inspect",
-        value=st.session_state.get(SELECTED, ""),
-        placeholder="Any key name — it does not have to be on the current page",
+oc1, oc2 = st.columns([4, 1])
+with oc1:
+    open_name = st.text_input(
+        "Open any key by name",
+        value="",
+        placeholder="reach keys beyond the current page",
+        key="open_by_name",
     )
-with col_go:
+with oc2:
     st.write("")
-    if st.button("Open", width="stretch"):
-        _select(typed_key.strip())
+    if st.button("Open", width="stretch") and open_name.strip():
+        _select(open_name.strip())
         st.rerun()
 
-target = (typed_key or "").strip()
+target = (st.session_state.get(SELECTED) or "").strip()
 
 if not target:
-    st.info("Enter a key name, or pick one from the browser above.")
+    st.info("Click a key above, or open one by name.")
 else:
+    st.markdown(f"### `{target}`")
     col_off, col_cnt = st.columns(2)
     with col_off:
         offset = st.number_input("Offset (collections)", min_value=0, value=0, step=50)
@@ -380,11 +385,8 @@ else:
                 with st.form(f"lrem_{target}"):
                     st.write("**Remove / pop**")
                     r_val = st.text_area("Remove by value", key=f"lrem_val_{target}", height=80)
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        do_rem = st.form_submit_button("LREM")
-                    with col_b:
-                        do_pop = st.form_submit_button("Pop right")
+                    do_rem = st.form_submit_button("LREM")
+                    do_pop = st.form_submit_button("Pop right")
                     if do_rem and r_val:
                         if c.remove_redis_list_value(target, r_val) is None:
                             st.error(c.last_error() or "LREM failed.")
@@ -544,7 +546,7 @@ else:
             _export_button(target, data)
             confirm_key = f"confirm_del_{target}"
             if st.session_state.get(confirm_key):
-                st.warning("Delete this key?")
+                st.warning("Empty / delete this whole key?")
                 if st.button("Yes, delete", key=f"yes_del_{target}"):
                     res = c.delete_redis_key(target)
                     st.session_state.pop(confirm_key, None)
@@ -558,6 +560,6 @@ else:
                     st.session_state.pop(confirm_key, None)
                     st.rerun()
             else:
-                if st.button("🗑 Delete key", key=f"del_{target}"):
+                if st.button("🗑 Empty / delete key", key=f"del_{target}"):
                     st.session_state[confirm_key] = True
                     st.rerun()
