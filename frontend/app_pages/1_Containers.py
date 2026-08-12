@@ -57,6 +57,11 @@ with tab_all:
             or needle in (ct.get("image") or "").lower()
         ]
 
+    # Default order: by container name. The summary table can still be
+    # re-sorted by clicking its column headers (that only affects the table);
+    # the "Container detail & controls" list below always stays name-sorted.
+    containers = sorted(containers, key=lambda ct: (ct.get("name") or "").lower())
+
     if not containers:
         st.info("No containers found.")
     else:
@@ -247,7 +252,10 @@ with tab_groups:
 
         for g in groups:
             project = g.get("project", "?")
-            services = g.get("services", []) or []
+            services = sorted(
+                g.get("services", []) or [],
+                key=lambda s: (s.get("name") or s.get("container_name") or "").lower(),
+            )
             running = g.get("running", 0)
             total = g.get("total", len(services))
             health = "🟢" if running == total else ("🟡" if running else "🔴")
