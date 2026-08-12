@@ -27,7 +27,7 @@ _TYPE_ICON = {
     "string": "🔤", "hash": "🧩", "list": "📋",
     "set": "🎯", "zset": "📊", "stream": "🌊",
 }
-_ITEM_CAP = 300  # per-page render cap for big collections
+_ITEM_CAP = 50   # items rendered before a "Show more" (keeps big collections light)
 
 
 @st.cache_resource
@@ -85,6 +85,28 @@ def _matches(needle: str, *fields) -> bool:
         return True
     n = needle.lower()
     return any(n in str(f).lower() for f in fields)
+
+
+def _mid_ellipsis(s: str, n: int = 52) -> str:
+    """Shorten a long key by eliding the middle, keeping head + distinguishing tail."""
+    if len(s) <= n:
+        return s
+    keep = n - 1
+    head = keep - keep // 3
+    return f"{s[:head]}…{s[-(keep - head):]}"
+
+
+def _visible(items: list, scope: str):
+    """Return (slice, has_more, capkey, cap) for incremental 'Show more' rendering."""
+    capkey = f"cap_{scope}"
+    cap = st.session_state.get(capkey, _ITEM_CAP)
+    return items[:cap], len(items) > cap, capkey, cap
+
+
+def _show_more(capkey: str, cap: int, total: int) -> None:
+    if st.button(f"Show more ({cap} of {total})", key=f"more_{capkey}"):
+        st.session_state[capkey] = cap + _ITEM_CAP
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +168,7 @@ elif sort_choice == "Type":
 elif sort_choice == "TTL (soonest)":
     shown.sort(key=lambda e: _ttl_sort_key(e.get("ttl")))
 
-master, detail = st.columns([1, 2], gap="large")
+master, detail = st.columns([2, 3], gap="large")
 
 # ---------------------------------------------------------------------------
 # Master — click a key
@@ -195,18 +217,20 @@ with master:
             st.session_state["redis_cursor"] = next_cursor
             st.rerun()
 
-    box = st.container(height=520)
-    with box:
-        if not shown:
-            st.caption("No keys on this page match the filter.")
-        for e in shown:
-            k = e.get("key", "?")
-            sel = st.session_state.get(SELECTED) == k
-            label = f"{'▶ ' if sel else ''}{_type_icon(e.get('type','?'))} {k}  ·  {_ttl_text(e.get('ttl'))}"
-            if st.button(label, key=f"krow_{k}", use_container_width=True,
-                         type="primary" if sel else "secondary"):
-                _select(k)
-                st.rerun()
+    # No inner scroll box — the page paginates (Prev/Next + page size), which
+    # bounds the list without trapping the scroll wheel in a nested region.
+    if not shown:
+        st.caption("No keys on this page match the filter.")
+    for e in shown:
+        k = e.get("key", "?")
+        sel = st.session_state.get(SELECTED) == k
+        # Monospace + middle-ellipsis so long ids stay one line and legible;
+        # the code span also stops '_'/'*' in key names from being italicised.
+        label = f"{_type_icon(e.get('type','?'))} `{_mid_ellipsis(k)}`  ·  {_ttl_text(e.get('ttl'))}"
+        if st.button(label, key=f"krow_{k}", use_container_width=True,
+                     type="primary" if sel else "secondary", help=k):
+            _select(k)
+            st.rerun()
 
     if admin:
         with st.expander("🗑 Bulk delete keys from this page"):
@@ -268,7 +292,8 @@ def _value_tab(target: str, ktype: str, value, offset: int) -> None:
     if ktype == "hash" and isinstance(value, dict):
         items = [(f, v) for f, v in value.items() if _matches(filt, f, v)]
         st.caption(f"{len(items)} field(s)")
-        for f, v in items[:_ITEM_CAP]:
+        vis, more, capkey, cap = _visible(items, f"{target}:hash")
+        for f, v in vis:
             with st.expander(f"🔑 {f}"):
                 _pretty(v)
                 if admin:
@@ -285,11 +310,14 @@ def _value_tab(target: str, ktype: str, value, offset: int) -> None:
                         else:
                             st.success("Deleted.")
                             st.rerun()
+        if more:
+            _show_more(capkey, cap, len(items))
 
     elif ktype == "list" and isinstance(value, list):
         rows = [(offset + i, v) for i, v in enumerate(value) if _matches(filt, v)]
         st.caption(f"{len(rows)} item(s) on this page")
-        for idx, v in rows[:_ITEM_CAP]:
+        vis, more, capkey, cap = _visible(rows, f"{target}:list")
+        for idx, v in vis:
             with st.expander(f"#{idx}"):
                 _pretty(v)
                 if admin:
@@ -306,11 +334,14 @@ def _value_tab(target: str, ktype: str, value, offset: int) -> None:
                         else:
                             st.success("Removed.")
                             st.rerun()
+        if more:
+            _show_more(capkey, cap, len(rows))
 
     elif ktype == "set" and isinstance(value, list):
         members = [m for m in value if _matches(filt, m)]
         st.caption(f"{len(members)} member(s) on this page")
-        for m in members[:_ITEM_CAP]:
+        vis, more, capkey, cap = _visible(members, f"{target}:set")
+        for m in vis:
             with st.expander(f"• {m}"):
                 if admin and st.button("🗑 Remove", key=f"sr_{target}_{m}"):
                     if c.remove_redis_set_member(target, m) is None:
@@ -318,11 +349,14 @@ def _value_tab(target: str, ktype: str, value, offset: int) -> None:
                     else:
                         st.success("Removed.")
                         st.rerun()
+        if more:
+            _show_more(capkey, cap, len(members))
 
     elif ktype == "zset" and isinstance(value, list):
         rows = [it for it in value if isinstance(it, dict) and _matches(filt, it.get("member"))]
         st.caption(f"{len(rows)} member(s) on this page")
-        for it in rows[:_ITEM_CAP]:
+        vis, more, capkey, cap = _visible(rows, f"{target}:zset")
+        for it in vis:
             m, sc = it.get("member"), it.get("score")
             with st.expander(f"{m}  ·  score {sc}"):
                 if admin:
@@ -339,6 +373,8 @@ def _value_tab(target: str, ktype: str, value, offset: int) -> None:
                         else:
                             st.success("Removed.")
                             st.rerun()
+        if more:
+            _show_more(capkey, cap, len(rows))
     else:
         _pretty(value)
 
