@@ -8,6 +8,7 @@ push to the front or back. No dropdown-select-click — click a queue to open it
 
 import fnmatch
 import json
+import secrets
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -163,46 +164,81 @@ with list_col:
 # Inspector renderers
 # ---------------------------------------------------------------------------
 
+def _pop_at_index(key: str, index: int, expected) -> tuple[bool, str]:
+    """Verify index still holds `expected`, then remove exactly that element.
+
+    Re-reads the value at `index`; if it no longer matches what was loaded the
+    caller must not proceed (the queue drained and positions shifted). Removal
+    uses the LSET-sentinel + LREM idiom so the *exact* index is popped even when
+    the value is duplicated elsewhere. Returns (ok, message).
+    """
+    current = c.get_redis_list(key, index, index)
+    items = (current or {}).get("items", []) if current is not None else []
+    if not items:
+        return False, f"Index {index} no longer exists — reload the queue and retry."
+    if str(items[0]) != str(expected):
+        return False, f"Entry at index {index} changed since load — reload and retry."
+    sentinel = f"__portcullis_tomb__{index}__{secrets.token_hex(8)}"
+    if c.set_redis_list_index(key, index, sentinel) is None:
+        return False, c.last_error() or "Could not mark the entry for removal."
+    if c.remove_redis_list_value(key, sentinel, count=1) is None:
+        return False, c.last_error() or "Could not remove the entry."
+    return True, "removed"
+
+
 def _entry_actions(key: str, index: int, value, uid: str) -> None:
-    """View + (admin) edit/delete controls for a single list entry."""
+    """View + (admin) actions for a single list entry.
+
+    Every mutation first confirms the index still holds the loaded value, then
+    pops exactly that element before re-adding it where appropriate.
+    """
     _render_value(value)
     if not admin:
         return
+
     new_val = st.text_area("Edit value", value=str(value), key=f"qi_ev_{uid}")
-    if st.button("💾 Save", key=f"qi_save_{uid}"):
-        # Safeguard: the index may have shifted since load (the queue drained).
-        # Only LSET in place if the index still holds the value we loaded;
-        # otherwise remove the original and append the edit to the back so we
-        # never overwrite a different entry that moved into this slot.
-        current = c.get_redis_list(key, index, index)
-        cur_items = (current or {}).get("items", []) if current is not None else []
-        cur_val = cur_items[0] if cur_items else None
-        if cur_val is not None and str(cur_val) == str(value):
-            res = c.set_redis_list_index(key, index, new_val)
-            if res is not None:
-                st.success(f"Updated index {index} in place.")
-                st.rerun()
-            else:
-                st.error(c.last_error() or "Could not update.")
+    if st.button("💾 Save (pop & append to back)", key=f"qi_save_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
         else:
-            rem = c.remove_redis_list_value(key, str(value), count=1)
             push = c.push_redis_list(key, [new_val], direction="right")
             if push is not None:
-                removed = (rem or {}).get("removed", 0) if rem is not None else 0
                 st.success(
-                    f"Index moved since load — removed {removed} original and "
-                    f"appended the edit to the back (new length {push.get('length'):,})."
+                    f"Saved — popped index {index} and appended to the back "
+                    f"(length {push.get('length'):,})."
                 )
                 st.rerun()
             else:
-                st.error(c.last_error() or "Could not apply edit.")
-    if st.button("🗑 Delete this entry", key=f"qi_del_{uid}"):
-        res = c.remove_redis_list_value(key, str(value), count=1)
-        if res is not None:
-            st.success(f"Removed {res.get('removed', 0)} entry.")
+                st.error(c.last_error() or "Popped the original but could not append the edit.")
+
+    if st.button("⏫ Move to top", key=f"qi_top_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        elif c.push_redis_list(key, [str(value)], direction="left") is not None:
+            st.success("Moved to the top.")
             st.rerun()
         else:
-            st.error(c.last_error() or "Could not delete.")
+            st.error(c.last_error() or "Popped but could not push to the top.")
+
+    if st.button("⏬ Move to bottom", key=f"qi_bot_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        elif c.push_redis_list(key, [str(value)], direction="right") is not None:
+            st.success("Moved to the bottom.")
+            st.rerun()
+        else:
+            st.error(c.last_error() or "Popped but could not push to the bottom.")
+
+    if st.button("🗑 Delete this entry", key=f"qi_del_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        else:
+            st.success(f"Deleted index {index}.")
+            st.rerun()
 
 
 def _render_list_inspector(key: str, depth: int) -> None:
@@ -368,6 +404,23 @@ with insp_col:
                 for i, item in enumerate(detail.get("sample_oldest") or []):
                     with st.expander(f"message {i}"):
                         _render_value(item)
+
+            # -- Danger zone: empty the whole queue ------------------------
+            if admin:
+                with st.expander("🧨 Danger zone — empty this queue"):
+                    st.caption(
+                        f"Deletes the key **{target}** and all {depth:,} entries. "
+                        "This cannot be undone."
+                    )
+                    ok = st.checkbox(f"Yes, empty and delete '{target}'", key=f"qi_empty_ok_{target}")
+                    if st.button("Empty / delete queue", key=f"qi_empty_{target}", disabled=not ok):
+                        res = c.delete_redis_key(target)
+                        if res is not None:
+                            st.success(f"Emptied and deleted '{target}'.")
+                            st.session_state.pop(SEL, None)
+                            st.rerun()
+                        else:
+                            st.error(c.last_error() or "Could not delete the queue.")
 
 # ---------------------------------------------------------------------------
 # Arm the refresh timer last, so a slow scan cannot restart the page mid-load.
