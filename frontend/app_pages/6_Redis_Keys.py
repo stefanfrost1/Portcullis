@@ -1,11 +1,13 @@
 """
-Redis Keys page — click-to-drill keyspace browser + editor.
+Redis Keys — master/detail keyspace browser and editor.
 
-  1. Browser  — cursor-paginated SCAN; click a key row to open it. Named sort
-                and a name filter narrow the current page.
-  2. Inspector — full value view for the selected key (any type), with
-                pagination for large collections and type-appropriate editing,
-                plus a guarded delete (flush) of the whole key.
+Left  (master):  cursor-paginated SCAN, click a key row to open it. Named sort
+                 and a name filter narrow the current page.
+Right (detail):  a tabbed inspector for the selected key —
+                   • Value   view contents; filter + click an item to drill in,
+                             with inline edit/delete per item
+                   • Add     type-appropriate insert (push / HSET / SADD / ZADD)
+                   • Manage  TTL, rename, copy, export, and a guarded delete
 
 Any key can also be opened by name, so keys beyond the scan window are reachable.
 """
@@ -15,12 +17,17 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-import pandas as pd
-from utils.api_client import EngineClient, get_config, current_role
+from utils.api_client import EngineClient, get_config, current_role, is_admin
 from utils.formatting import bytes_to_human, seconds_to_human
 
 st.set_page_config(page_title="Redis Keys", page_icon="🗝️", layout="wide")
-st.title("🗝️ Redis Keys")
+
+SELECTED = "redis_selected_key"
+_TYPE_ICON = {
+    "string": "🔤", "hash": "🧩", "list": "📋",
+    "set": "🎯", "zset": "📊", "stream": "🌊",
+}
+_ITEM_CAP = 300  # per-page render cap for big collections
 
 
 @st.cache_resource
@@ -30,12 +37,7 @@ def get_client() -> EngineClient:
 
 
 c = get_client()
-
-SELECTED = "redis_selected_key"
-_TYPE_ICON = {
-    "string": "🔤", "hash": "🧩", "list": "📋",
-    "set": "🎯", "zset": "📊", "stream": "🌊",
-}
+admin = is_admin()
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +49,6 @@ def _type_icon(t: str) -> str:
 
 
 def _ttl_text(ttl) -> str:
-    """Render a Redis TTL: -1 means no expiry, -2 means the key is gone."""
     if ttl is None:
         return "—"
     if ttl == -1:
@@ -58,14 +59,16 @@ def _ttl_text(ttl) -> str:
 
 
 def _ttl_sort_key(ttl) -> float:
-    """Sort soonest-expiring first; no-expiry / missing sink to the bottom."""
     if isinstance(ttl, int) and ttl >= 0:
         return ttl
     return float("inf")
 
 
-def _pretty(value: str):
-    """Render a scalar as JSON when it parses as JSON, otherwise as raw text."""
+def _pretty(value) -> None:
+    """Render as pretty JSON when it parses, otherwise as raw text."""
+    if isinstance(value, (dict, list)):
+        st.json(value)
+        return
     text = "" if value is None else str(value)
     try:
         st.json(json.loads(text))
@@ -77,22 +80,20 @@ def _select(key: str) -> None:
     st.session_state[SELECTED] = key
 
 
-def _export_button(key: str, payload) -> None:
-    st.download_button(
-        "⬇ Export JSON",
-        data=json.dumps(payload, indent=2, default=str),
-        file_name=f"{key.replace(':', '_').replace('/', '_')}.json",
-        mime="application/json",
-        key=f"export_{key}",
-    )
+def _matches(needle: str, *fields) -> bool:
+    if not needle:
+        return True
+    n = needle.lower()
+    return any(n in str(f).lower() for f in fields)
 
 
 # ---------------------------------------------------------------------------
-# Sidebar filters
+# Sidebar — scan + sort controls
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.caption(f"Signed in as: **{current_role()}**")
+    st.subheader("Keyspace")
+    st.caption(f"Signed in as **{current_role()}**")
     pattern = st.text_input("Key pattern", value="*", help="Glob over key names, e.g. user:*")
     key_type = st.selectbox("Type filter", ["all", "string", "hash", "list", "set", "zset", "stream"])
     sort_choice = st.selectbox(
@@ -100,52 +101,20 @@ with st.sidebar:
     )
     name_filter = st.text_input("Filter by name", value="", placeholder="substring…")
     page_size = st.selectbox("Keys per page", [25, 50, 100, 200], index=1)
-    if st.button("↻ Refresh"):
+    if st.button("↻ Refresh", use_container_width=True):
         st.session_state["redis_cursor"] = 0
         st.session_state["redis_cursor_history"] = [0]
         st.rerun()
-    st.divider()
     total = c.get_redis_key_count()
     if total is not None:
-        st.metric("Total keys (DBSIZE)", total)
+        st.metric("Total keys (DBSIZE)", f"{total:,}")
+
+st.title("🗝️ Redis Keys")
+if not admin:
+    st.caption("🔒 Read-only — sign in as admin to create, edit, or delete keys.")
 
 # ---------------------------------------------------------------------------
-# Key creation form
-# ---------------------------------------------------------------------------
-
-with st.expander("Create / overwrite a key", expanded=False):
-    with st.form("create_key_form"):
-        new_key = st.text_input("Key name")
-        new_type = st.selectbox("Type", ["string", "hash", "list", "set", "zset"])
-        new_value = st.text_area("Value (JSON for hash/list/set/zset)", height=80)
-        new_ttl = st.number_input("TTL (seconds, 0 = no expiry)", min_value=0, value=0)
-        submitted = st.form_submit_button("Save")
-    if submitted and new_key.strip():
-        val = new_value.strip()
-        if new_type != "string":
-            try:
-                val = json.loads(val)
-            except ValueError:
-                st.error("Value must be valid JSON for this type.")
-                val = None
-        if val is not None:
-            result = c.set_redis_key(
-                new_key.strip(),
-                key_type=new_type,
-                value=val,
-                ttl=new_ttl if new_ttl > 0 else None,
-            )
-            if result is None:
-                st.error(c.last_error() or "Could not save key.")
-            else:
-                st.success(f"Key '{new_key}' saved.")
-                _select(new_key.strip())
-                st.rerun()
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Pagination state
+# Fetch + sort + filter the current SCAN page
 # ---------------------------------------------------------------------------
 
 if "redis_cursor" not in st.session_state:
@@ -153,28 +122,19 @@ if "redis_cursor" not in st.session_state:
 if "redis_cursor_history" not in st.session_state:
     st.session_state["redis_cursor_history"] = [0]
 
-# ---------------------------------------------------------------------------
-# Key browser — click a row to drill in
-# ---------------------------------------------------------------------------
-
-st.subheader("Browser")
-
 result = c.get_redis_keys(
     pattern=pattern,
     cursor=st.session_state["redis_cursor"],
     count=page_size,
     key_type=key_type if key_type != "all" else None,
 )
-
 if result is None:
     st.error(c.last_error() or "Could not scan the keyspace.")
     result = {}
 
-# The API returns enriched entries: [{"key": ..., "type": ..., "ttl": ...}]
 entries = [e for e in (result.get("keys", []) or []) if isinstance(e, dict)]
 next_cursor = result.get("cursor", 0)
 
-# Named sort + name filter (applied to the current SCAN page).
 nf = name_filter.strip().lower()
 shown = [e for e in entries if not nf or nf in e.get("key", "").lower()]
 if sort_choice == "Key (A → Z)":
@@ -186,380 +146,352 @@ elif sort_choice == "Type":
 elif sort_choice == "TTL (soonest)":
     shown.sort(key=lambda e: _ttl_sort_key(e.get("ttl")))
 
-if not entries and st.session_state["redis_cursor"] == 0:
-    st.info("No keys found matching the filter.")
-else:
-    st.caption(
-        f"Showing {len(shown)} of {len(entries)} key(s) on this page. SCAN returns "
-        "approximate page sizes; an empty page does not mean the scan is finished."
-    )
+master, detail = st.columns([1, 2], gap="large")
 
-    # Pagination controls
-    col_prev, col_info, col_next = st.columns([1, 3, 1])
+# ---------------------------------------------------------------------------
+# Master — click a key
+# ---------------------------------------------------------------------------
+
+with master:
+    if admin:
+        with st.expander("➕ Create / overwrite a key"):
+            with st.form("create_key_form"):
+                new_key = st.text_input("Key name")
+                new_type = st.selectbox("Type", ["string", "hash", "list", "set", "zset"])
+                new_value = st.text_area("Value (JSON for hash/list/set/zset)", height=80)
+                new_ttl = st.number_input("TTL (seconds, 0 = no expiry)", min_value=0, value=0)
+                submitted = st.form_submit_button("Save")
+            if submitted and new_key.strip():
+                val = new_value.strip()
+                if new_type != "string":
+                    try:
+                        val = json.loads(val)
+                    except ValueError:
+                        st.error("Value must be valid JSON for this type.")
+                        val = None
+                if val is not None:
+                    res = c.set_redis_key(new_key.strip(), key_type=new_type, value=val,
+                                          ttl=new_ttl if new_ttl > 0 else None)
+                    if res is None:
+                        st.error(c.last_error() or "Could not save key.")
+                    else:
+                        st.success(f"Key '{new_key}' saved.")
+                        _select(new_key.strip())
+                        st.rerun()
+
+    st.caption(f"{len(shown)} of {len(entries)} on this page · cursor {st.session_state['redis_cursor']}"
+               + ("" if next_cursor else " · scan complete"))
+
+    pc = st.columns(2)
     history: list = st.session_state["redis_cursor_history"]
-    with col_prev:
-        if len(history) > 1 and st.button("◀ Prev"):
+    with pc[0]:
+        if len(history) > 1 and st.button("◀ Prev", use_container_width=True):
             history.pop()
             st.session_state["redis_cursor"] = history[-1]
             st.rerun()
-    with col_next:
-        if next_cursor and st.button("Next ▶"):
+    with pc[1]:
+        if next_cursor and st.button("Next ▶", use_container_width=True):
             history.append(next_cursor)
             st.session_state["redis_cursor"] = next_cursor
             st.rerun()
-    with col_info:
-        st.caption(
-            f"Cursor: {st.session_state['redis_cursor']}"
-            + ("" if next_cursor else " · scan complete")
-        )
 
-    # Clickable rows — inside a fixed-height scrollable box so the inspector
-    # below stays reachable even with a full page of keys.
-    st.markdown("**Click a key to open it**")
-    box = st.container(height=360)
+    box = st.container(height=520)
     with box:
         if not shown:
             st.caption("No keys on this page match the filter.")
         for e in shown:
             k = e.get("key", "?")
-            t = e.get("type", "?")
             sel = st.session_state.get(SELECTED) == k
-            label = f"{'▶ ' if sel else ''}{_type_icon(t)} {k}  ·  {_ttl_text(e.get('ttl'))}"
-            if st.button(
-                label, key=f"krow_{k}", use_container_width=True,
-                type="primary" if sel else "secondary",
-            ):
+            label = f"{'▶ ' if sel else ''}{_type_icon(e.get('type','?'))} {k}  ·  {_ttl_text(e.get('ttl'))}"
+            if st.button(label, key=f"krow_{k}", use_container_width=True,
+                         type="primary" if sel else "secondary"):
                 _select(k)
                 st.rerun()
 
-    # Bulk delete (secondary, guarded)
-    with st.expander("🗑 Bulk delete keys from this page"):
-        picked = st.multiselect("Select keys", options=[e.get("key") for e in shown], key="bulk_select")
-        if picked:
-            ok = st.checkbox(f"Yes, delete {len(picked)} key(s)", key="bulk_ok")
-            if st.button("Delete selected", disabled=not ok):
-                res = c.bulk_delete_redis_keys(picked)
-                if res is None:
-                    st.error(c.last_error() or "Bulk delete failed.")
-                else:
-                    st.success(f"Deleted {res.get('deleted', 0)} key(s).")
-                    st.session_state.pop("bulk_select", None)
-                    st.rerun()
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Key inspector
-# ---------------------------------------------------------------------------
-
-st.subheader("Inspector")
-
-oc1, oc2 = st.columns([4, 1])
-with oc1:
-    open_name = st.text_input(
-        "Open any key by name",
-        value="",
-        placeholder="reach keys beyond the current page",
-        key="open_by_name",
-    )
-with oc2:
-    st.write("")
-    if st.button("Open", width="stretch") and open_name.strip():
-        _select(open_name.strip())
-        st.rerun()
-
-target = (st.session_state.get(SELECTED) or "").strip()
-
-if not target:
-    st.info("Click a key above, or open one by name.")
-else:
-    st.markdown(f"### `{target}`")
-    col_off, col_cnt = st.columns(2)
-    with col_off:
-        offset = st.number_input("Offset (collections)", min_value=0, value=0, step=50)
-    with col_cnt:
-        count = st.number_input("Items per page", min_value=1, max_value=5000, value=200, step=50)
-
-    data = c.get_redis_key(target, offset=int(offset), count=int(count))
-
-    if data is None:
-        st.error(c.last_error() or f"Could not read '{target}'.")
-    else:
-        ktype = data.get("type", "?")
-        value = data.get("value")
-
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Type", ktype)
-        m2.metric("TTL", _ttl_text(data.get("ttl")))
-        m3.metric("Length", data.get("length") if data.get("length") is not None else "—")
-        m4.metric("Memory", bytes_to_human(data.get("memory_bytes")))
-        st.caption(f"Encoding: `{data.get('encoding') or '—'}` · db {data.get('db', 0)}")
-
-        if data.get("truncated"):
-            st.warning("Value is truncated — page through it with the offset above.")
-
-        # -- Value view + type-specific editing -------------------------
-
-        if ktype == "string":
-            _pretty(value)
-            with st.form(f"edit_string_{target}"):
-                edited = st.text_area("Edit value", value=str(value or ""), height=160)
-                if st.form_submit_button("Save value"):
-                    if c.set_redis_key(target, "string", edited) is None:
-                        st.error(c.last_error() or "Save failed.")
+    if admin:
+        with st.expander("🗑 Bulk delete keys from this page"):
+            picked = st.multiselect("Select keys", options=[e.get("key") for e in shown], key="bulk_select")
+            if picked:
+                ok = st.checkbox(f"Yes, delete {len(picked)} key(s)", key="bulk_ok")
+                if st.button("Delete selected", disabled=not ok):
+                    res = c.bulk_delete_redis_keys(picked)
+                    if res is None:
+                        st.error(c.last_error() or "Bulk delete failed.")
                     else:
-                        st.success("Saved.")
+                        st.success(f"Deleted {res.get('deleted', 0)} key(s).")
+                        st.session_state.pop("bulk_select", None)
                         st.rerun()
 
-        elif ktype == "hash" and isinstance(value, dict):
-            st.dataframe(
-                pd.DataFrame([{"Field": k, "Value": v} for k, v in value.items()]),
-                width="stretch",
-                hide_index=True,
-            )
-            field_names = list(value.keys())
-            if field_names:
-                inspect_field = st.selectbox("Show field value", field_names, key=f"hf_{target}")
-                _pretty(value.get(inspect_field))
 
-            col_set, col_del = st.columns(2)
-            with col_set:
-                with st.form(f"hset_{target}"):
-                    st.write("**Set field**")
-                    f_name = st.text_input("Field", key=f"hset_name_{target}")
-                    f_val = st.text_area("Value", key=f"hset_val_{target}", height=80)
-                    if st.form_submit_button("HSET") and f_name.strip():
-                        if c.set_redis_hash_field(target, f_name.strip(), f_val) is None:
+# ---------------------------------------------------------------------------
+# Detail — inspector tabs
+# ---------------------------------------------------------------------------
+
+def _value_tab(target: str, ktype: str, value, offset: int) -> None:
+    """View + click-to-drill items with inline edit/delete."""
+    if ktype == "string":
+        _pretty(value)
+        if admin:
+            new = st.text_area("Edit value", value=str(value or ""), height=180, key=f"sv_{target}")
+            if st.button("💾 Save value", key=f"ss_{target}"):
+                if c.set_redis_key(target, "string", new) is None:
+                    st.error(c.last_error() or "Save failed.")
+                else:
+                    st.success("Saved.")
+                    st.rerun()
+        return
+
+    if ktype == "stream":
+        st.caption("Oldest entries in range. Narrow with entry IDs to reach newer ones.")
+        s_start = st.text_input("From ID", value="-", key=f"xs_{target}")
+        s_end = st.text_input("To ID", value="+", key=f"xe_{target}")
+        s_count = st.number_input("Entries", min_value=1, max_value=1000, value=50, key=f"xc_{target}")
+        stream = c.get_redis_stream(target, start=s_start, end=s_end, count=int(s_count))
+        rows = (stream or {}).get("entries", (stream or {}).get("items", [])) or []
+        if not rows:
+            st.info("No entries in this range.")
+        for entry in rows:
+            eid = entry.get("id", "?")
+            with st.expander(f"📨 {eid}"):
+                st.json(entry.get("fields", {}))
+                if admin and st.button("🗑 XDEL", key=f"xdel_{target}_{eid}"):
+                    if c.delete_redis_stream_entry(target, eid) is None:
+                        st.error(c.last_error() or "XDEL failed.")
+                    else:
+                        st.success("Entry deleted.")
+                        st.rerun()
+        return
+
+    # Collections: hash / list / set / zset — filter + per-item drill-in.
+    filt = st.text_input("Filter items", key=f"cf_{target}", placeholder="substring…")
+
+    if ktype == "hash" and isinstance(value, dict):
+        items = [(f, v) for f, v in value.items() if _matches(filt, f, v)]
+        st.caption(f"{len(items)} field(s)")
+        for f, v in items[:_ITEM_CAP]:
+            with st.expander(f"🔑 {f}"):
+                _pretty(v)
+                if admin:
+                    nv = st.text_area("Value", value=str(v), key=f"hv_{target}_{f}", height=80)
+                    if st.button("💾 Save", key=f"hs_{target}_{f}"):
+                        if c.set_redis_hash_field(target, f, nv) is None:
                             st.error(c.last_error() or "HSET failed.")
                         else:
-                            st.success("Field set.")
+                            st.success("Saved.")
                             st.rerun()
-            with col_del:
-                with st.form(f"hdel_{target}"):
-                    st.write("**Delete field**")
-                    d_field = st.selectbox("Field", field_names or ["—"], key=f"hdel_{target}")
-                    if st.form_submit_button("HDEL") and field_names:
-                        if c.delete_redis_hash_field(target, d_field) is None:
+                    if st.button("🗑 Delete field", key=f"hd_{target}_{f}"):
+                        if c.delete_redis_hash_field(target, f) is None:
                             st.error(c.last_error() or "HDEL failed.")
                         else:
-                            st.success("Field deleted.")
+                            st.success("Deleted.")
                             st.rerun()
 
-        elif ktype == "list" and isinstance(value, list):
-            st.dataframe(
-                pd.DataFrame([
-                    {"Index": int(offset) + i, "Value": v} for i, v in enumerate(value)
-                ]),
-                width="stretch",
-                hide_index=True,
-            )
-            if value:
-                idx_options = [int(offset) + i for i in range(len(value))]
-                show_idx = st.selectbox("Show item", idx_options, key=f"li_{target}")
-                _pretty(value[show_idx - int(offset)])
-
-            col_push, col_edit, col_rem = st.columns(3)
-            with col_push:
-                with st.form(f"lpush_{target}"):
-                    st.write("**Push item**")
-                    p_val = st.text_area("Value", key=f"lpush_val_{target}", height=80)
-                    p_dir = st.radio("Direction", ["right", "left"], horizontal=True, key=f"lpush_dir_{target}")
-                    if st.form_submit_button("Push"):
-                        if c.push_redis_list(target, [p_val], direction=p_dir) is None:
-                            st.error(c.last_error() or "Push failed.")
-                        else:
-                            st.success("Pushed.")
-                            st.rerun()
-            with col_edit:
-                with st.form(f"lset_{target}"):
-                    st.write("**Replace at index**")
-                    e_idx = st.number_input("Index", min_value=0, value=int(offset), key=f"lset_idx_{target}")
-                    e_val = st.text_area("New value", key=f"lset_val_{target}", height=80)
-                    if st.form_submit_button("LSET"):
-                        if c.set_redis_list_index(target, int(e_idx), e_val) is None:
+    elif ktype == "list" and isinstance(value, list):
+        rows = [(offset + i, v) for i, v in enumerate(value) if _matches(filt, v)]
+        st.caption(f"{len(rows)} item(s) on this page")
+        for idx, v in rows[:_ITEM_CAP]:
+            with st.expander(f"#{idx}"):
+                _pretty(v)
+                if admin:
+                    nv = st.text_area("Value", value=str(v), key=f"lv_{target}_{idx}", height=80)
+                    if st.button("💾 Save at index", key=f"ls_{target}_{idx}"):
+                        if c.set_redis_list_index(target, idx, nv) is None:
                             st.error(c.last_error() or "LSET failed.")
                         else:
-                            st.success("Item replaced.")
+                            st.success("Saved.")
                             st.rerun()
-            with col_rem:
-                with st.form(f"lrem_{target}"):
-                    st.write("**Remove / pop**")
-                    r_val = st.text_area("Remove by value", key=f"lrem_val_{target}", height=80)
-                    do_rem = st.form_submit_button("LREM")
-                    do_pop = st.form_submit_button("Pop right")
-                    if do_rem and r_val:
-                        if c.remove_redis_list_value(target, r_val) is None:
+                    if st.button("🗑 Delete (by value)", key=f"ld_{target}_{idx}"):
+                        if c.remove_redis_list_value(target, str(v), count=1) is None:
                             st.error(c.last_error() or "LREM failed.")
                         else:
                             st.success("Removed.")
                             st.rerun()
-                    if do_pop:
-                        popped = c.pop_redis_list(target, direction="right")
-                        if popped is None:
-                            st.error(c.last_error() or "Pop failed.")
-                        else:
-                            st.success(f"Popped: {popped.get('value')}")
-                            st.rerun()
 
-        elif ktype == "set" and isinstance(value, list):
-            st.dataframe(
-                pd.DataFrame([{"Member": m} for m in value]),
-                width="stretch",
-                hide_index=True,
-            )
-            col_add, col_rem = st.columns(2)
-            with col_add:
-                with st.form(f"sadd_{target}"):
-                    st.write("**Add member**")
-                    s_val = st.text_input("Member", key=f"sadd_val_{target}")
-                    if st.form_submit_button("SADD") and s_val:
-                        if c.add_redis_set_members(target, [s_val]) is None:
-                            st.error(c.last_error() or "SADD failed.")
-                        else:
-                            st.success("Member added.")
-                            st.rerun()
-            with col_rem:
-                with st.form(f"srem_{target}"):
-                    st.write("**Remove member**")
-                    s_del = st.selectbox("Member", value or ["—"], key=f"srem_{target}")
-                    if st.form_submit_button("SREM") and value:
-                        if c.remove_redis_set_member(target, s_del) is None:
-                            st.error(c.last_error() or "SREM failed.")
-                        else:
-                            st.success("Member removed.")
-                            st.rerun()
+    elif ktype == "set" and isinstance(value, list):
+        members = [m for m in value if _matches(filt, m)]
+        st.caption(f"{len(members)} member(s) on this page")
+        for m in members[:_ITEM_CAP]:
+            with st.expander(f"• {m}"):
+                if admin and st.button("🗑 Remove", key=f"sr_{target}_{m}"):
+                    if c.remove_redis_set_member(target, m) is None:
+                        st.error(c.last_error() or "SREM failed.")
+                    else:
+                        st.success("Removed.")
+                        st.rerun()
 
-        elif ktype == "zset" and isinstance(value, list):
-            st.dataframe(
-                pd.DataFrame([
-                    {"Member": m.get("member"), "Score": m.get("score")}
-                    for m in value if isinstance(m, dict)
-                ]),
-                width="stretch",
-                hide_index=True,
-            )
-            members = [m.get("member") for m in value if isinstance(m, dict)]
-            col_add, col_rem = st.columns(2)
-            with col_add:
-                with st.form(f"zadd_{target}"):
-                    st.write("**Add / update member**")
-                    z_member = st.text_input("Member", key=f"zadd_m_{target}")
-                    z_score = st.number_input("Score", value=0.0, key=f"zadd_s_{target}")
-                    if st.form_submit_button("ZADD") and z_member:
-                        if c.add_redis_zset_member(target, z_member, float(z_score)) is None:
+    elif ktype == "zset" and isinstance(value, list):
+        rows = [it for it in value if isinstance(it, dict) and _matches(filt, it.get("member"))]
+        st.caption(f"{len(rows)} member(s) on this page")
+        for it in rows[:_ITEM_CAP]:
+            m, sc = it.get("member"), it.get("score")
+            with st.expander(f"{m}  ·  score {sc}"):
+                if admin:
+                    ns = st.number_input("Score", value=float(sc or 0), key=f"zs_{target}_{m}")
+                    if st.button("💾 Update score", key=f"zu_{target}_{m}"):
+                        if c.add_redis_zset_member(target, m, float(ns)) is None:
                             st.error(c.last_error() or "ZADD failed.")
                         else:
-                            st.success("Member stored.")
+                            st.success("Updated.")
                             st.rerun()
-            with col_rem:
-                with st.form(f"zrem_{target}"):
-                    st.write("**Remove member**")
-                    z_del = st.selectbox("Member", members or ["—"], key=f"zrem_{target}")
-                    if st.form_submit_button("ZREM") and members:
-                        if c.remove_redis_zset_member(target, z_del) is None:
+                    if st.button("🗑 Remove", key=f"zr_{target}_{m}"):
+                        if c.remove_redis_zset_member(target, m) is None:
                             st.error(c.last_error() or "ZREM failed.")
                         else:
-                            st.success("Member removed.")
+                            st.success("Removed.")
                             st.rerun()
+    else:
+        _pretty(value)
 
-        elif ktype == "stream":
-            st.caption(
-                "Showing the oldest entries in range. Narrow the window with entry "
-                "IDs to reach newer ones (`1700000000000-0`)."
-            )
-            col_s, col_e, col_n = st.columns(3)
-            with col_s:
-                s_start = st.text_input("From ID", value="-", key=f"xs_{target}")
-            with col_e:
-                s_end = st.text_input("To ID", value="+", key=f"xe_{target}")
-            with col_n:
-                s_count = st.number_input("Entries", min_value=1, max_value=1000, value=50, key=f"xc_{target}")
 
-            stream = c.get_redis_stream(target, start=s_start, end=s_end, count=int(s_count))
-            if stream is None:
-                st.error(c.last_error() or "Could not read stream entries.")
+def _add_tab(target: str, ktype: str) -> None:
+    if not admin:
+        st.info("Sign in as admin to add items.")
+        return
+    if ktype == "hash":
+        with st.form(f"add_h_{target}"):
+            f = st.text_input("Field")
+            v = st.text_area("Value", height=80)
+            if st.form_submit_button("HSET") and f.strip():
+                if c.set_redis_hash_field(target, f.strip(), v) is None:
+                    st.error(c.last_error() or "HSET failed.")
+                else:
+                    st.success("Field set.")
+                    st.rerun()
+    elif ktype == "list":
+        with st.form(f"add_l_{target}"):
+            st.caption("One value per line pushes several at once.")
+            body = st.text_area("Value(s)", height=100)
+            where = st.radio("Push to", ["Back (tail)", "Front (head)"], horizontal=True)
+            if st.form_submit_button("Push"):
+                vals = [ln for ln in body.splitlines() if ln.strip() != ""] or ([body] if body else [])
+                if vals:
+                    d = "left" if where.startswith("Front") else "right"
+                    if c.push_redis_list(target, vals, direction=d) is None:
+                        st.error(c.last_error() or "Push failed.")
+                    else:
+                        st.success(f"Pushed {len(vals)}.")
+                        st.rerun()
+    elif ktype == "set":
+        with st.form(f"add_s_{target}"):
+            m = st.text_input("Member")
+            if st.form_submit_button("SADD") and m.strip():
+                if c.add_redis_set_members(target, [m.strip()]) is None:
+                    st.error(c.last_error() or "SADD failed.")
+                else:
+                    st.success("Member added.")
+                    st.rerun()
+    elif ktype == "zset":
+        with st.form(f"add_z_{target}"):
+            m = st.text_input("Member")
+            sc = st.number_input("Score", value=0.0)
+            if st.form_submit_button("ZADD") and m.strip():
+                if c.add_redis_zset_member(target, m.strip(), float(sc)) is None:
+                    st.error(c.last_error() or "ZADD failed.")
+                else:
+                    st.success("Member stored.")
+                    st.rerun()
+    elif ktype == "string":
+        st.info("Edit the value directly in the Value tab.")
+    else:
+        st.info("Adding entries to this type is not supported here.")
+
+
+def _manage_tab(target: str, data: dict) -> None:
+    st.download_button(
+        "⬇ Export JSON",
+        data=json.dumps(data, indent=2, default=str),
+        file_name=f"{target.replace(':', '_').replace('/', '_')}.json",
+        mime="application/json",
+        key=f"export_{target}",
+    )
+    if not admin:
+        st.info("Sign in as admin to change or delete this key.")
+        return
+
+    with st.form(f"ttl_{target}"):
+        st.markdown("**TTL**")
+        secs = st.number_input("Seconds (0 = persist / no expiry)", min_value=0, value=0)
+        if st.form_submit_button("Apply TTL"):
+            res = c.set_redis_key_expire(target, int(secs)) if secs > 0 else c.persist_redis_key(target)
+            if res is None:
+                st.error(c.last_error() or "TTL change failed.")
             else:
-                stream_entries = stream.get("entries", stream.get("items", [])) or []
-                if not stream_entries:
-                    st.info("No entries in this range.")
-                for entry in stream_entries:
-                    entry_id = entry.get("id", "?")
-                    with st.expander(f"📨 {entry_id}"):
-                        st.json(entry.get("fields", {}))
-                        if st.button("🗑 XDEL", key=f"xdel_{target}_{entry_id}"):
-                            if c.delete_redis_stream_entry(target, entry_id) is None:
-                                st.error(c.last_error() or "XDEL failed.")
-                            else:
-                                st.success("Entry deleted.")
-                                st.rerun()
+                st.success("TTL updated.")
+                st.rerun()
 
+    with st.form(f"rename_{target}"):
+        st.markdown("**Rename**")
+        to = st.text_input("New name")
+        if st.form_submit_button("Rename") and to.strip():
+            if c.rename_redis_key(target, to.strip()) is None:
+                st.error(c.last_error() or "Rename failed.")
+            else:
+                st.success("Renamed.")
+                _select(to.strip())
+                st.rerun()
+
+    with st.form(f"copy_{target}"):
+        st.markdown("**Copy**")
+        to = st.text_input("Destination")
+        replace = st.checkbox("Replace if exists")
+        if st.form_submit_button("Copy") and to.strip():
+            if c.copy_redis_key(target, to.strip(), replace=replace) is None:
+                st.error(c.last_error() or "Copy failed.")
+            else:
+                st.success("Copied.")
+                st.rerun()
+
+    st.divider()
+    st.markdown("**Danger zone**")
+    st.caption("Deletes the entire key. This cannot be undone.")
+    ok = st.checkbox(f"Yes, empty and delete '{target}'", key=f"del_ok_{target}")
+    if st.button("🗑 Empty / delete key", disabled=not ok, key=f"del_{target}"):
+        res = c.delete_redis_key(target)
+        if res is None:
+            st.error(c.last_error() or "Delete failed.")
         else:
-            st.json(value if value is not None else {})
+            st.session_state.pop(SELECTED, None)
+            st.success("Key deleted.")
+            st.rerun()
 
-        # -- Key-level operations ---------------------------------------
 
-        st.divider()
-        st.write("**Key operations**")
-        op1, op2, op3, op4 = st.columns(4)
+with detail:
+    with st.form("open_by_name", clear_on_submit=False):
+        nm = st.text_input("Open a key by name", placeholder="reach keys beyond the current page")
+        if st.form_submit_button("Open") and nm.strip():
+            _select(nm.strip())
+            st.rerun()
 
-        with op1:
-            with st.form(f"ttl_form_{target}"):
-                st.write("TTL")
-                ttl_secs = st.number_input("Seconds (0 = persist)", min_value=0, value=0)
-                if st.form_submit_button("Apply"):
-                    res = (
-                        c.set_redis_key_expire(target, int(ttl_secs))
-                        if ttl_secs > 0 else c.persist_redis_key(target)
-                    )
-                    if res is None:
-                        st.error(c.last_error() or "TTL change failed.")
-                    else:
-                        st.success("TTL updated.")
-                        st.rerun()
+    target = (st.session_state.get(SELECTED) or "").strip()
+    if not target:
+        st.info("← Click a key on the left, or open one by name above.")
+    else:
+        with st.expander("⚙ Paging for large collections"):
+            offset = st.number_input("Offset", min_value=0, value=0, step=50, key=f"off_{target}")
+            count = st.number_input("Items per page", min_value=1, max_value=5000, value=200, step=50,
+                                    key=f"cnt_{target}")
 
-        with op2:
-            with st.form(f"rename_form_{target}"):
-                st.write("Rename")
-                rename_to = st.text_input("New name")
-                if st.form_submit_button("Rename") and rename_to.strip():
-                    if c.rename_redis_key(target, rename_to.strip()) is None:
-                        st.error(c.last_error() or "Rename failed.")
-                    else:
-                        st.success("Renamed.")
-                        _select(rename_to.strip())
-                        st.rerun()
+        data = c.get_redis_key(target, offset=int(offset), count=int(count))
+        if data is None:
+            st.error(c.last_error() or f"Could not read '{target}'.")
+        else:
+            ktype = data.get("type", "?")
+            value = data.get("value")
 
-        with op3:
-            with st.form(f"copy_form_{target}"):
-                st.write("Copy")
-                copy_to = st.text_input("Destination")
-                replace = st.checkbox("Replace if exists")
-                if st.form_submit_button("Copy") and copy_to.strip():
-                    if c.copy_redis_key(target, copy_to.strip(), replace=replace) is None:
-                        st.error(c.last_error() or "Copy failed.")
-                    else:
-                        st.success("Copied.")
-                        st.rerun()
+            st.markdown(f"### {_type_icon(ktype)} `{target}`")
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Type", ktype)
+            k2.metric("TTL", _ttl_text(data.get("ttl")))
+            k3.metric("Length", data.get("length") if data.get("length") is not None else "—")
+            k4.metric("Memory", bytes_to_human(data.get("memory_bytes")))
+            st.caption(f"Encoding: `{data.get('encoding') or '—'}` · db {data.get('db', 0)}")
+            if data.get("truncated"):
+                st.warning("Value is truncated — page through it with the offset above.")
 
-        with op4:
-            st.write("Danger")
-            _export_button(target, data)
-            confirm_key = f"confirm_del_{target}"
-            if st.session_state.get(confirm_key):
-                st.warning("Empty / delete this whole key?")
-                if st.button("Yes, delete", key=f"yes_del_{target}"):
-                    res = c.delete_redis_key(target)
-                    st.session_state.pop(confirm_key, None)
-                    if res is None:
-                        st.error(c.last_error() or "Delete failed.")
-                    else:
-                        st.session_state.pop(SELECTED, None)
-                        st.success("Key deleted.")
-                        st.rerun()
-                if st.button("Cancel", key=f"no_del_{target}"):
-                    st.session_state.pop(confirm_key, None)
-                    st.rerun()
-            else:
-                if st.button("🗑 Empty / delete key", key=f"del_{target}"):
-                    st.session_state[confirm_key] = True
-                    st.rerun()
+            tab_value, tab_add, tab_manage = st.tabs(["📄 Value", "➕ Add", "⚙️ Manage"])
+            with tab_value:
+                _value_tab(target, ktype, value, int(offset))
+            with tab_add:
+                _add_tab(target, ktype)
+            with tab_manage:
+                _manage_tab(target, data)
