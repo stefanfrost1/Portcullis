@@ -2,7 +2,8 @@
 MyEngine Dashboard — Overview page.
 
 Shows combined Docker + Redis top-level metrics from GET /api/v1/overview.
-Auto-refreshes every REFRESH_INTERVAL seconds (default 10).
+Static by default — use the "↻ Refresh now" button, or enable Auto-refresh in
+the sidebar (its interval seeds from REFRESH_INTERVAL).
 """
 
 import streamlit as st
@@ -48,13 +49,15 @@ def client() -> EngineClient:
 cfg = get_config()
 
 with st.sidebar:
-    auto_refresh = st.checkbox("Auto-refresh", value=True)
+    # Off by default — the page stays static and is refreshed with the button
+    # below (or by enabling this). Set REFRESH_INTERVAL to seed the interval.
+    auto_refresh = st.checkbox("Auto-refresh", value=False)
     refresh_secs = st.slider(
         "Refresh interval (s)",
-        min_value=5,
-        max_value=120,
-        value=max(5, cfg["refresh_interval"]),
-        step=5,
+        min_value=10,
+        max_value=600,
+        value=min(600, max(10, cfg["refresh_interval"])),
+        step=10,
         disabled=not auto_refresh,
     )
     if st.button("↻ Refresh now"):
