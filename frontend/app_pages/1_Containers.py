@@ -266,6 +266,21 @@ with tab_groups:
                 ]
                 st.dataframe(pd.DataFrame(svc_rows), width="stretch", hide_index=True)
 
+                # Click a service to jump straight to its logs.
+                st.caption("Open logs:")
+                per_row = 4
+                for start in range(0, len(services), per_row):
+                    cols = st.columns(per_row)
+                    for j, svc in enumerate(services[start:start + per_row]):
+                        label = f"📋 {svc.get('name') or svc.get('container_name', '?')}"
+                        if cols[j].button(label, key=f"glog_{project}_{start + j}",
+                                          use_container_width=True):
+                            st.session_state["selected_id"] = svc.get("id") or svc.get("container_name", "")
+                            st.session_state["selected_name"] = svc.get("container_name", "")
+                            for _k in ("logs_cache", "logs_cache_key", "search_results", "ctx_state"):
+                                st.session_state.pop(_k, None)
+                            st.switch_page("app_pages/10_Log_Search.py")
+
 # ---------------------------------------------------------------------------
 # Arm the refresh timer last, so a slow fetch cannot restart the page mid-load.
 # ---------------------------------------------------------------------------

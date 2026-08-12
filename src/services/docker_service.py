@@ -1302,6 +1302,7 @@ def get_compose_groups() -> list[dict]:
         groups[project]["services"].append({
             "name": s.get("compose_service"),
             "container_name": s["name"],
+            "id": s["id"],
             "short_id": s["short_id"],
             "state": state,
             "uptime_seconds": s.get("uptime_seconds"),
