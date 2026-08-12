@@ -6,6 +6,7 @@ or free-text search its contents, view/edit/delete a specific entry, and bulk
 push to the front or back. No dropdown-select-click — click a queue to open it.
 """
 
+import fnmatch
 import json
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -168,13 +169,33 @@ def _entry_actions(key: str, index: int, value, uid: str) -> None:
     if not admin:
         return
     new_val = st.text_area("Edit value", value=str(value), key=f"qi_ev_{uid}")
-    if st.button("💾 Save (set at this index)", key=f"qi_save_{uid}"):
-        res = c.set_redis_list_index(key, index, new_val)
-        if res is not None:
-            st.success(f"Saved index {index}.")
-            st.rerun()
+    if st.button("💾 Save", key=f"qi_save_{uid}"):
+        # Safeguard: the index may have shifted since load (the queue drained).
+        # Only LSET in place if the index still holds the value we loaded;
+        # otherwise remove the original and append the edit to the back so we
+        # never overwrite a different entry that moved into this slot.
+        current = c.get_redis_list(key, index, index)
+        cur_items = (current or {}).get("items", []) if current is not None else []
+        cur_val = cur_items[0] if cur_items else None
+        if cur_val is not None and str(cur_val) == str(value):
+            res = c.set_redis_list_index(key, index, new_val)
+            if res is not None:
+                st.success(f"Updated index {index} in place.")
+                st.rerun()
+            else:
+                st.error(c.last_error() or "Could not update.")
         else:
-            st.error(c.last_error() or "Could not save.")
+            rem = c.remove_redis_list_value(key, str(value), count=1)
+            push = c.push_redis_list(key, [new_val], direction="right")
+            if push is not None:
+                removed = (rem or {}).get("removed", 0) if rem is not None else 0
+                st.success(
+                    f"Index moved since load — removed {removed} original and "
+                    f"appended the edit to the back (new length {push.get('length'):,})."
+                )
+                st.rerun()
+            else:
+                st.error(c.last_error() or "Could not apply edit.")
     if st.button("🗑 Delete this entry", key=f"qi_del_{uid}"):
         res = c.remove_redis_list_value(key, str(value), count=1)
         if res is not None:
@@ -217,16 +238,28 @@ def _render_list_inspector(key: str, depth: int) -> None:
 
     # -- Search --------------------------------------------------------
     with tab_search:
-        term = st.text_input("Find text in entries", key=f"qi_find_{key}",
-                              placeholder="free text, case-insensitive")
+        term = st.text_input(
+            "Find text in entries", key=f"qi_find_{key}",
+            placeholder="substring — or use * and ? wildcards",
+            help="Plain text matches any entry that contains it. Add * (any run) "
+                 "or ? (one char) to switch to whole-value wildcard matching, "
+                 "e.g. `*CostCenter*` or `lock:*`. Case-insensitive.",
+        )
         window = st.slider("Scan the first N entries", 100, 5000, 1000, 100, key=f"qi_win_{key}")
         if term:
             scanned = c.get_redis_list(key, start=0, stop=int(window) - 1)
             items = (scanned or {}).get("items", []) or []
             tl = term.lower()
-            matches = [(i, v) for i, v in enumerate(items) if tl in str(v).lower()]
+            if any(ch in term for ch in "*?"):
+                # Wildcard: match the whole value (glob-anchored), case-insensitive.
+                matches = [(i, v) for i, v in enumerate(items)
+                           if fnmatch.fnmatchcase(str(v).lower(), tl)]
+            else:
+                # Plain text: contains match, case-insensitive.
+                matches = [(i, v) for i, v in enumerate(items) if tl in str(v).lower()]
             st.caption(
-                f"{len(matches)} match(es) in the first {min(int(window), depth):,} of {depth:,} entries."
+                f"{len(matches)} match(es) in the first {min(int(window), depth):,} of "
+                f"{depth:,} entries."
             )
             if admin and matches:
                 confirm = st.checkbox(
