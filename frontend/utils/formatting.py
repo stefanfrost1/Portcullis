@@ -35,20 +35,6 @@ def seconds_to_human(n: int | None) -> str:
     return " ".join(parts)
 
 
-def state_color(state: str | None) -> str:
-    """Return an emoji badge for a Docker container state."""
-    mapping = {
-        "running": "🟢",
-        "paused": "🟡",
-        "restarting": "🔄",
-        "exited": "🔴",
-        "dead": "💀",
-        "created": "⚪",
-        "removing": "🗑️",
-    }
-    return mapping.get((state or "").lower(), "❓")
-
-
 def health_badge(ok: bool) -> str:
     """Return a short health badge string."""
     return "🟢 Connected" if ok else "🔴 Unreachable"

@@ -1,6 +1,6 @@
 # Portcullis + Streamlit Dashboard
 
-A Docker and Redis management platform consisting of:
+A Redis management platform consisting of:
 
 | Service | Description | Default URL |
 |---|---|---|
@@ -74,40 +74,10 @@ docker compose down -v
 ## What the UI does
 
 ### Dashboard (`/`)
-Live overview combining Docker + Redis metrics on one screen. Auto-refreshes every 10 seconds.
+Live Redis overview on one screen. Auto-refreshes every 10 seconds.
 
-- Container counts (running / paused / stopped)
-- Image and volume counts
 - Redis: connected clients, memory, keyspace size, ops/sec, hit rate
-- Container state pie chart
 - Top queues bar chart
-
-### Containers
-- Full container list with state, image, status, uptime, and ports
-- Per-container lifecycle controls: **Start / Stop / Restart / Pause / Unpause / Remove**
-- Live stats tab: CPU%, memory%, network I/O, block I/O
-- Compose project grouping tab
-
-### Images
-- List all images with tags, size, and creation date
-- Pull a new image by name (e.g. `nginx:latest`)
-- Remove images (with confirmation)
-
-### Networks
-- List networks with driver, scope, and attached container count
-- Create a new network (choose driver, set internal flag)
-- Inspect: see which containers are attached
-- Remove (built-in networks are protected)
-
-### Volumes
-- List volumes with driver and mountpoint
-- Create a new volume
-- Remove (with confirmation)
-
-### System
-- Docker daemon version, kernel, OS, CPU count, total memory
-- Disk usage breakdown: images / containers / volumes / build cache
-- Disk usage bar chart
 
 ### Redis Keys
 - Paginated key browser with pattern and type filters
@@ -224,7 +194,7 @@ Portcullis/
 │   └── services/
 └── frontend/                # Streamlit dashboard
     ├── app.py               # Dashboard entry point
-    ├── pages/               # One file per page (auto-discovered by Streamlit)
+    ├── app_pages/           # One file per page (routed explicitly from app.py)
     ├── utils/
     │   ├── api_client.py    # EngineClient — all API calls
     │   └── formatting.py    # Human-readable helpers

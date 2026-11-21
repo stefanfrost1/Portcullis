@@ -11,21 +11,22 @@ This file provides context, conventions, and workflows for AI assistants (and hu
 | **Name**    | MyEngineAPI                                                           |
 | **Remote**  | stefanfrost1/MyEngineAPI                                              |
 | **Branch**  | Work on feature branches; never push directly to `main`              |
-| **Purpose** | REST + WebSocket bridge between a UI and Docker daemon / Redis       |
+| **Purpose** | REST + WebSocket bridge between a UI and Redis                       |
 | **Runtime** | Python 3.12, FastAPI 0.115, Uvicorn 0.34                            |
-| **Version** | 3.1.0 (see `src/main.py`)                                            |
+| **Version** | 4.0.0 (see `src/main.py`)                                            |
 
 ---
 
 ## What This Service Does
 
-MyEngineAPI shields a UI from direct Docker socket and Redis access. It exposes two groups of functionality over a single FastAPI application:
+MyEngineAPI shields a UI from direct Redis access. It exposes the following over a single FastAPI application:
 
-1. **Docker management** — containers (list, inspect, stats, lifecycle, remove), images, networks, volumes, system info, disk usage, and a real-time Docker events WebSocket stream.
-2. **Redis management** — key browser (string/hash/list/set/zset/stream CRUD), server ops (INFO, CONFIG, BGSAVE, FLUSHDB, …), pub/sub, MONITOR stream, keyspace analysis, slow log, memory stats, latency tracking, and queue-depth monitoring.
-3. **Aggregate overview** — a single `GET /api/v1/overview` endpoint that combines Docker + Redis high-level stats for monitoring dashboards.
+1. **Redis management** — key browser (string/hash/list/set/zset/stream CRUD), server ops (INFO, CONFIG, BGSAVE, FLUSHDB, …), pub/sub, MONITOR stream, keyspace analysis, slow log, memory stats, latency tracking, and queue-depth monitoring.
+2. **Aggregate overview** — a single `GET /api/v1/overview` endpoint with Redis high-level stats and top queue depths for monitoring dashboards.
 
-Neither the Docker socket nor Redis is exposed to the UI directly.
+Redis is never exposed to the UI directly.
+
+> Docker management (containers, images, networks, volumes, logs, system) was removed in v4.0.0 as the deployment target moved from Docker to Kubernetes.
 
 ---
 
@@ -35,29 +36,22 @@ Neither the Docker socket nor Redis is exposed to the UI directly.
 MyEngineAPI/
 ├── CLAUDE.md                    # This file
 ├── Dockerfile                   # Python 3.12-slim, non-root user, port 8000
-├── docker-compose.yml           # Drop-in service definition with Docker socket mount
+├── docker-compose.yml           # Local stack: frontend, portcullis, redis
 ├── requirements.txt             # Python dependencies
 └── src/
     ├── main.py                  # FastAPI app, middleware, router registration
     ├── config.py                # Pydantic-settings config (env vars)
     ├── __init__.py
     ├── models/
-    │   ├── schemas.py           # Docker-facing Pydantic models + APIResponse envelope
+    │   ├── schemas.py           # Generic APIResponse envelope
     │   └── redis_schemas.py     # Redis request/body Pydantic models
     ├── routers/
-    │   ├── containers.py        # /containers — list, inspect, stats, lifecycle
-    │   ├── logs.py              # /containers/{id}/logs/…
-    │   ├── images.py            # /images — list, inspect, pull, remove
-    │   ├── networks.py          # /networks — list, inspect, create, remove
-    │   ├── volumes.py           # /volumes — list, inspect, create, remove
-    │   ├── system.py            # /system/info, /system/df, WS /system/events, /health
-    │   ├── overview.py          # /overview — combined Docker + Redis snapshot
+    │   ├── overview.py          # /overview — Redis snapshot; /health — Redis reachability
     │   ├── redis_keys.py        # /redis/keys — key browser + type operations
     │   ├── redis_server.py      # /redis — server ops, pub/sub, MONITOR WS, analysis
     │   ├── redis_queues.py      # /redis/queues — queue depth monitoring
-    │   └── _docker_errors.py    # Shared Docker exception → HTTPException helper
+    │   └── _auth.py             # Role helpers from Caddy X-User-Groups header
     └── services/
-        ├── docker_service.py    # Docker SDK wrapper (lazy singleton client)
         └── redis_service.py     # Redis connection pool wrapper
 ```
 
@@ -74,39 +68,6 @@ All endpoints are under the base path `/api/v1`.
 | Swagger  | `/api/v1/docs`          |
 | ReDoc    | `/api/v1/redoc`         |
 | OpenAPI  | `/api/v1/openapi.json`  |
-
-### Docker endpoints
-
-| Method | Path                              | Description                                  |
-|--------|-----------------------------------|----------------------------------------------|
-| GET    | `/containers`                     | List all (or running-only) containers        |
-| GET    | `/containers/stats/all`           | Parallel CPU/mem/IO stats for all containers |
-| GET    | `/containers/groups`              | Containers grouped by Compose project        |
-| GET    | `/containers/{id}`                | Inspect a single container                   |
-| GET    | `/containers/{id}/stats`          | Single-container resource stats              |
-| POST   | `/containers/{id}/start`          | Start container                              |
-| POST   | `/containers/{id}/stop`           | Stop container                               |
-| POST   | `/containers/{id}/restart`        | Restart container                            |
-| POST   | `/containers/{id}/pause`          | Pause container                              |
-| POST   | `/containers/{id}/unpause`        | Unpause container                            |
-| DELETE | `/containers/{id}`                | Remove container                             |
-| GET    | `/containers/{id}/logs/…`         | Log streaming (see logs router)              |
-| GET    | `/images`                         | List images                                  |
-| GET    | `/images/{id}`                    | Inspect image                                |
-| POST   | `/images/pull`                    | Pull an image                                |
-| DELETE | `/images/{id}`                    | Remove image                                 |
-| GET    | `/networks`                       | List networks                                |
-| GET    | `/networks/{id}`                  | Inspect network                              |
-| POST   | `/networks`                       | Create network                               |
-| DELETE | `/networks/{id}`                  | Remove network                               |
-| GET    | `/volumes`                        | List volumes                                 |
-| GET    | `/volumes/{name}`                 | Inspect volume                               |
-| POST   | `/volumes`                        | Create volume                                |
-| DELETE | `/volumes/{name}`                 | Remove volume                                |
-| GET    | `/system/info`                    | Docker daemon info + version                 |
-| GET    | `/system/df`                      | Disk usage breakdown                         |
-| WS     | `/system/events`                  | Real-time Docker events stream               |
-| GET    | `/health`                         | Health check (Docker reachability)           |
 
 ### Redis endpoints
 
@@ -167,7 +128,8 @@ All endpoints are under the base path `/api/v1`.
 
 | Method | Path        | Description                                       |
 |--------|-------------|---------------------------------------------------|
-| GET    | `/overview` | Combined Docker + Redis snapshot in a single call |
+| GET    | `/overview` | Redis snapshot + top queues in a single call      |
+| GET    | `/health`   | Health check (Redis reachability)                 |
 
 ### Response envelope
 
@@ -186,7 +148,7 @@ Error response:
 }
 ```
 
-HTTP status codes are used semantically. The `/overview` endpoint always returns 200; check the `"status": "error"` field inside each subsection for partial failures.
+HTTP status codes are used semantically. The `/overview` endpoint always returns 200; check the `"status": "error"` field inside the `redis` section for failures.
 
 ---
 
@@ -195,7 +157,6 @@ HTTP status codes are used semantically. The `/overview` endpoint always returns
 ### Prerequisites
 
 - Python 3.12+
-- Docker daemon running (socket at `/var/run/docker.sock`)
 - Redis instance reachable at the configured host/port
 
 ### Install Dependencies
@@ -210,7 +171,7 @@ pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8000
 ```
 
-Or via Docker Compose (recommended — includes Docker socket mount):
+Or via Docker Compose (local stack with Redis + frontend):
 
 ```bash
 # First time only:
@@ -257,25 +218,23 @@ All settings are in `src/config.py` and loaded from environment. Safe defaults a
 
 ### Service layer
 
-- `docker_service.py` — lazy-initialised singleton `docker.DockerClient`. All methods return plain dicts/primitives; no SDK objects leak into routers.
 - `redis_service.py` — connection pool wrapper. Pools are closed cleanly on shutdown via the FastAPI lifespan handler.
 
 ### Error handling
 
-- **Router level:** Docker exceptions are translated by `_docker_errors.handle_docker_exc()` into typed `HTTPException` responses (`404`, `409`, `503`, etc.).
+- **Router level:** `RedisError` exceptions are caught in each router and raised as `HTTPException`.
 - **Global fallback:** `unhandled_exception_handler` in `main.py` logs the full traceback internally and returns a generic `500` — stack traces are never exposed to clients.
 
 ### WebSocket endpoints
 
 | Path                          | Description                        |
 |-------------------------------|------------------------------------|
-| `/api/v1/system/events`       | Docker daemon event stream         |
 | `/api/v1/redis/pubsub/subscribe` | Redis pub/sub subscription      |
 | `/api/v1/redis/monitor`       | Redis MONITOR command stream       |
 
 ### Lifespan
 
-On startup the app pings both Docker and Redis and logs warnings (not errors) if either is unreachable — endpoints return `503` dynamically if a dependency is unavailable, but the service always starts. On shutdown, `close_docker_client()` and `rs.close_all_pools()` are called.
+On startup the app pings Redis and logs a warning (not an error) if it is unreachable — endpoints return errors dynamically while Redis is unavailable, but the service always starts. On shutdown, `rs.close_all_pools()` is called.
 
 ---
 
@@ -288,7 +247,7 @@ No automated tests exist yet. When adding tests:
 - Run with `pytest`
 - Do not commit code that breaks existing tests
 
-The interactive Swagger UI at `/api/v1/docs` can be used for manual endpoint testing against a live Docker + Redis environment.
+The interactive Swagger UI at `/api/v1/docs` can be used for manual endpoint testing against a live Redis instance.
 
 ---
 
@@ -331,8 +290,6 @@ Reference the published images directly — no source code required:
 services:
   portcullis:
     image: ghcr.io/stefanfrost1/portcullis:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - REDIS_HOST=redis
 
@@ -346,7 +303,6 @@ services:
 
 ```bash
 docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e REDIS_HOST=<redis-host> \
   -p 8000:8000 \
   ghcr.io/stefanfrost1/portcullis:latest
@@ -408,14 +364,14 @@ Each router module:
 
 ### Model pattern
 
-- `src/models/schemas.py` — Docker-domain models + generic `APIResponse` envelope
+- `src/models/schemas.py` — generic `APIResponse` envelope
 - `src/models/redis_schemas.py` — Redis request body models
 
 Do not add fields to response models that the service layer does not actually return.
 
 ### Service layer
 
-- Services hold the external-dependency logic (Docker SDK calls, Redis commands)
+- Services hold the external-dependency logic (Redis commands)
 - Services return plain dicts/primitives — never SDK objects
 - Connection lifecycle is managed by the lifespan context manager in `main.py`
 
@@ -477,4 +433,4 @@ This CLAUDE.md should be updated whenever:
 - Development workflows change
 - New conventions are adopted by the team
 
-*Last updated: 2026-02-28 (full rewrite — codebase fully scaffolded at v3.1.0)*
+*Last updated: 2026-11-21 (v4.0.0 — Docker management removed; Redis-only)*
