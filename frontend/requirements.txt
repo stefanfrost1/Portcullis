@@ -1,4 +1,4 @@
-streamlit>=1.31
+streamlit>=1.49          # st.context.headers (role forwarding) + width="stretch"
 streamlit-autorefresh>=1.0.1
 plotly>=5.18
 pandas>=2.2

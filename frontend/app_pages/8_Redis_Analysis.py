@@ -23,12 +23,10 @@ def get_client() -> EngineClient:
 
 c = get_client()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
-
 with st.sidebar:
     if st.button("↻ Refresh"):
         st.rerun()
+    scan_pattern = st.text_input("Key pattern", value="*")
 
 tab_keyspace, tab_memory_top, tab_expiring = st.tabs(["Keyspace", "Memory Top", "Expiring Soon"])
 
@@ -37,10 +35,15 @@ tab_keyspace, tab_memory_top, tab_expiring = st.tabs(["Keyspace", "Memory Top", 
 # ---------------------------------------------------------------------------
 
 with tab_keyspace:
-    ks = c.get_redis_analysis_keyspace()
-    if not ks:
+    with st.spinner("Sampling keyspace…"):
+        ks = c.get_redis_analysis_keyspace(pattern=scan_pattern or "*")
+
+    if ks is None:
+        st.error(c.last_error() or "Keyspace analysis unavailable.")
+    elif not ks:
         st.warning("Keyspace analysis unavailable.")
     else:
+        st.caption(f"Sampled {ks.get('total_scanned', 0):,} key(s) from db {ks.get('db', 0)}.")
         col1, col2 = st.columns(2)
 
         # Type distribution pie
@@ -65,13 +68,17 @@ with tab_keyspace:
             else:
                 st.info("No type data.")
 
-        # Top prefixes bar
-        prefixes = ks.get("top_prefixes", {}) or {}
+        # Top prefixes bar — the API returns [{"prefix": ..., "count": ...}, …]
+        prefixes = ks.get("top_prefixes") or []
+        if isinstance(prefixes, dict):   # tolerate the older map shape
+            prefixes = [{"prefix": p, "count": n} for p, n in prefixes.items()]
+
         with col2:
             st.subheader("Top key prefixes")
             if prefixes:
-                prefix_names = list(prefixes.keys())[:20]
-                prefix_counts = [prefixes[p] for p in prefix_names]
+                top = prefixes[:20]
+                prefix_names = [p.get("prefix", "?") for p in top]
+                prefix_counts = [p.get("count", 0) for p in top]
                 fig2 = go.Figure(
                     go.Bar(
                         x=prefix_counts,
@@ -116,8 +123,13 @@ with tab_keyspace:
 # ---------------------------------------------------------------------------
 
 with tab_memory_top:
-    n = st.slider("Number of keys to sample", min_value=10, max_value=100, value=20, step=10)
-    top_keys = c.get_redis_analysis_memory_top(count=n) or []
+    n = st.slider("Number of keys to show", min_value=10, max_value=100, value=20, step=10)
+    with st.spinner("Measuring key memory…"):
+        top_keys = c.get_redis_analysis_memory_top(count=n)
+
+    if top_keys is None:
+        st.error(c.last_error() or "Could not measure key memory.")
+        top_keys = []
 
     if not top_keys:
         st.info("No data. Keys may be too small to sample or Redis unavailable.")
@@ -166,18 +178,24 @@ with tab_expiring:
     else:
         window_secs = window_opts[window_label]
 
-    expiring = c.get_redis_analysis_expiring_soon(seconds=window_secs) or []
+    with st.spinner("Scanning for expiring keys…"):
+        expiring = c.get_redis_analysis_expiring_soon(seconds=int(window_secs))
+
+    if expiring is None:
+        st.error(c.last_error() or "Could not scan for expiring keys.")
+        expiring = []
 
     if not expiring:
         st.info(f"No keys expiring within {seconds_to_human(window_secs)}.")
     else:
         rows = []
         for entry in expiring:
+            ttl = entry.get("ttl", entry.get("ttl_seconds", 0))
             rows.append({
                 "Key": entry.get("key", "?"),
                 "Type": entry.get("type", "?"),
-                "TTL": seconds_to_human(entry.get("ttl_seconds")),
-                "TTL (s)": entry.get("ttl_seconds", 0),
+                "TTL": seconds_to_human(ttl),
+                "TTL (s)": ttl,
             })
         df = pd.DataFrame(rows).sort_values("TTL (s)")
         st.write(f"**{len(expiring)} key(s)** expiring within {seconds_to_human(window_secs)}")

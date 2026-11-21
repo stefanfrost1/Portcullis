@@ -1,19 +1,24 @@
 """
-Redis Queues page — monitor queue depths for List and Stream keys.
-Auto-refreshes every 10 seconds.
+Redis Queues — click-to-drill queue browser.
+
+Workflow-first: see the queues and their depths, click one to drill in, browse
+or free-text search its contents, view/edit/delete a specific entry, and bulk
+push to the front or back. No dropdown-select-click — click a queue to open it.
 """
 
+import fnmatch
+import json
+import secrets
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import streamlit as st
-import pandas as pd
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
-from utils.api_client import EngineClient, get_config
+from utils.api_client import EngineClient, get_config, is_admin
+from utils.formatting import seconds_to_human
 
 st.set_page_config(page_title="Redis Queues", page_icon="📬", layout="wide")
-st.title("📬 Redis Queues")
 
 
 @st.cache_resource
@@ -23,89 +28,403 @@ def get_client() -> EngineClient:
 
 
 c = get_client()
+admin = is_admin()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
+SEL = "queue_selected_key"
+_TYPE_ICON = {"list": "📋", "stream": "🌊"}
+
+
+def _icon(qtype: str) -> str:
+    return _TYPE_ICON.get(qtype, "•")
+
+
+def _render_value(raw) -> None:
+    """Show a payload as pretty JSON when it parses, otherwise as raw text."""
+    if isinstance(raw, (dict, list)):
+        st.json(raw)
+        return
+    text = "" if raw is None else str(raw)
+    try:
+        st.json(json.loads(text))
+    except (ValueError, TypeError):
+        st.code(text or "(empty)", language="text")
+
+
+def _select_queue(key: str) -> None:
+    """Drill into a queue and reset any per-queue view state."""
+    st.session_state[SEL] = key
+    for k in list(st.session_state.keys()):
+        if k.startswith("qi_"):
+            st.session_state.pop(k, None)
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — scan + sort controls
+# ---------------------------------------------------------------------------
 
 with st.sidebar:
-    auto_refresh = st.checkbox("Auto-refresh (10s)", value=True)
-    if auto_refresh:
-        st_autorefresh(interval=10_000, key="queues_refresh")
-    if st.button("↻ Refresh now"):
-        st.rerun()
-    top_n = st.slider("Chart: top N queues", min_value=5, max_value=50, value=20)
-
-# ---------------------------------------------------------------------------
-# Queue data
-# ---------------------------------------------------------------------------
-
-queues = c.get_redis_queues() or []
-
-if not queues:
-    st.info("No queues found. List or Stream keys will appear here when they exist.")
-else:
-    # Sort by depth descending
-    queues_sorted = sorted(queues, key=lambda q: q.get("depth", 0) or 0, reverse=True)
-
-    # Summary metrics
-    total_depth = sum(q.get("depth", 0) or 0 for q in queues_sorted)
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Queues", len(queues_sorted))
-    col2.metric("Total Depth", f"{total_depth:,}")
-    col3.metric("Deepest Queue", queues_sorted[0].get("key", "?") if queues_sorted else "—")
-
-    # Bar chart
-    chart_queues = queues_sorted[:top_n]
-    fig = go.Figure(
-        go.Bar(
-            x=[q.get("depth", 0) for q in chart_queues],
-            y=[q.get("key", "?") for q in chart_queues],
-            orientation="h",
-            marker_color="#4F8EF7",
-            text=[str(q.get("depth", 0)) for q in chart_queues],
-            textposition="auto",
-        )
+    st.subheader("Queues")
+    pattern = st.text_input("Key pattern", value="*", help="Glob over key names, e.g. queue:*")
+    max_keys = st.slider("Max keys to scan", 100, 5000, 500, 100)
+    sort_choice = st.selectbox(
+        "Sort by",
+        ["Depth (high → low)", "Depth (low → high)", "Name (A → Z)", "Name (Z → A)"],
+        index=0,
     )
-    fig.update_layout(
-        xaxis_title="Depth",
-        yaxis=dict(autorange="reversed"),
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#fafafa"),
-        margin=dict(t=20, b=40, l=20, r=20),
-        height=max(300, min(top_n * 28, 800)),
-    )
-    st.plotly_chart(fig, width="stretch")
-
-    # Table
-    rows = []
-    for q in queues_sorted:
-        rows.append({
-            "Queue": q.get("key", "?"),
-            "Type": q.get("type", "?"),
-            "Depth": q.get("depth", 0),
-            "Consumer Groups": q.get("group_count", "—") if q.get("type") == "stream" else "—",
-            "Pending": q.get("pending_count", "—") if q.get("type") == "stream" else "—",
-        })
-    df = pd.DataFrame(rows)
-    st.dataframe(df, width="stretch", hide_index=True)
-
+    name_filter = st.text_input("Filter by name", value="", placeholder="substring…")
     st.divider()
-    st.subheader("Queue detail")
+    auto_refresh = st.checkbox("Auto-refresh (10s)", value=False)
+    if st.button("↻ Refresh now", use_container_width=True):
+        st.rerun()
 
-    for q in queues_sorted[:20]:
-        q_key = q.get("key", "?")
-        q_type = q.get("type", "?")
-        depth = q.get("depth", 0)
+st.title("📬 Redis Queues")
+if not admin:
+    st.caption("🔒 Read-only — sign in as admin to edit, delete, or push.")
 
-        with st.expander(f"📬 {q_key}  (depth: {depth:,})"):
-            st.write(f"**Type:** {q_type}")
-            st.write(f"**Depth:** {depth:,}")
+# ---------------------------------------------------------------------------
+# Fetch + sort + filter
+# ---------------------------------------------------------------------------
 
-            if q_type == "stream":
-                groups = q.get("groups", []) or []
-                if groups:
-                    st.write(f"**Consumer groups ({len(groups)}):**")
-                    gdf = pd.DataFrame(groups)
-                    st.dataframe(gdf, width="stretch", hide_index=True)
+with st.spinner("Scanning for queues…"):
+    queues = c.get_redis_queues(pattern=pattern or "*", max_keys=max_keys) or []
+
+if c.last_error():
+    st.error(c.last_error())
+
+if sort_choice.startswith("Depth"):
+    queues.sort(key=lambda q: q.get("depth") or 0, reverse=sort_choice.endswith("(high → low)"))
+else:
+    queues.sort(key=lambda q: (q.get("key") or "").lower(), reverse=sort_choice.endswith("(Z → A)"))
+
+nf = name_filter.strip().lower()
+visible = [q for q in queues if not nf or nf in (q.get("key") or "").lower()]
+
+total_depth = sum(q.get("depth") or 0 for q in queues)
+m1, m2, m3 = st.columns(3)
+m1.metric("Queues", len(queues))
+m2.metric("Total depth", f"{total_depth:,}")
+m3.metric("Shown", len(visible))
+
+with st.expander("📊 Depth chart (top 20)", expanded=False):
+    top = sorted(queues, key=lambda q: q.get("depth") or 0, reverse=True)[:20]
+    if top:
+        fig = go.Figure(
+            go.Bar(
+                x=[q.get("depth") or 0 for q in top],
+                y=[q.get("key") for q in top],
+                orientation="h",
+                marker_color="#4F8EF7",
+                text=[f"{q.get('depth') or 0:,}" for q in top],
+                textposition="auto",
+            )
+        )
+        fig.update_layout(
+            yaxis=dict(autorange="reversed"),
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#fafafa"),
+            margin=dict(t=10, b=20, l=10, r=10),
+            height=max(240, min(len(top) * 26, 700)),
+        )
+        st.plotly_chart(fig, width="stretch")
+    else:
+        st.caption("No queues to chart.")
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Master (click list) + detail (inspector)
+# ---------------------------------------------------------------------------
+
+list_col, insp_col = st.columns([1, 2], gap="large")
+
+MAX_ROWS = 200
+with list_col:
+    st.markdown("#### Click a queue")
+    if not visible:
+        st.info("No queues match the pattern/filter.")
+    for q in visible[:MAX_ROWS]:
+        key = q.get("key", "?")
+        depth = q.get("depth") or 0
+        qtype = q.get("type", "?")
+        is_sel = st.session_state.get(SEL) == key
+        label = f"{'▶ ' if is_sel else ''}{_icon(qtype)} {key}  ·  {depth:,}"
+        if st.button(
+            label,
+            key=f"q_{key}",
+            use_container_width=True,
+            type="primary" if is_sel else "secondary",
+        ):
+            _select_queue(key)
+            st.rerun()
+    if len(visible) > MAX_ROWS:
+        st.caption(f"Showing first {MAX_ROWS} of {len(visible)} — narrow with the name filter.")
+
+
+# ---------------------------------------------------------------------------
+# Inspector renderers
+# ---------------------------------------------------------------------------
+
+def _pop_at_index(key: str, index: int, expected) -> tuple[bool, str]:
+    """Verify index still holds `expected`, then remove exactly that element.
+
+    Re-reads the value at `index`; if it no longer matches what was loaded the
+    caller must not proceed (the queue drained and positions shifted). Removal
+    uses the LSET-sentinel + LREM idiom so the *exact* index is popped even when
+    the value is duplicated elsewhere. Returns (ok, message).
+    """
+    current = c.get_redis_list(key, index, index)
+    items = (current or {}).get("items", []) if current is not None else []
+    if not items:
+        return False, f"Index {index} no longer exists — reload the queue and retry."
+    if str(items[0]) != str(expected):
+        return False, f"Entry at index {index} changed since load — reload and retry."
+    sentinel = f"__portcullis_tomb__{index}__{secrets.token_hex(8)}"
+    if c.set_redis_list_index(key, index, sentinel) is None:
+        return False, c.last_error() or "Could not mark the entry for removal."
+    if c.remove_redis_list_value(key, sentinel, count=1) is None:
+        return False, c.last_error() or "Could not remove the entry."
+    return True, "removed"
+
+
+def _entry_actions(key: str, index: int, value, uid: str) -> None:
+    """View + (admin) actions for a single list entry.
+
+    Every mutation first confirms the index still holds the loaded value, then
+    pops exactly that element before re-adding it where appropriate.
+    """
+    _render_value(value)
+    if not admin:
+        return
+
+    new_val = st.text_area("Edit value", value=str(value), key=f"qi_ev_{uid}")
+    if st.button("💾 Save (pop & append to back)", key=f"qi_save_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        else:
+            push = c.push_redis_list(key, [new_val], direction="right")
+            if push is not None:
+                st.success(
+                    f"Saved — popped index {index} and appended to the back "
+                    f"(length {push.get('length'):,})."
+                )
+                st.rerun()
+            else:
+                st.error(c.last_error() or "Popped the original but could not append the edit.")
+
+    if st.button("⏫ Move to top", key=f"qi_top_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        elif c.push_redis_list(key, [str(value)], direction="left") is not None:
+            st.success("Moved to the top.")
+            st.rerun()
+        else:
+            st.error(c.last_error() or "Popped but could not push to the top.")
+
+    if st.button("⏬ Move to bottom", key=f"qi_bot_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        elif c.push_redis_list(key, [str(value)], direction="right") is not None:
+            st.success("Moved to the bottom.")
+            st.rerun()
+        else:
+            st.error(c.last_error() or "Popped but could not push to the bottom.")
+
+    if st.button("🗑 Delete this entry", key=f"qi_del_{uid}"):
+        ok, msg = _pop_at_index(key, index, value)
+        if not ok:
+            st.warning(msg)
+        else:
+            st.success(f"Deleted index {index}.")
+            st.rerun()
+
+
+def _render_list_inspector(key: str, depth: int) -> None:
+    tab_browse, tab_search, tab_modify = st.tabs(["🔎 Browse", "🔍 Search", "✏️ Modify"])
+
+    # -- Browse --------------------------------------------------------
+    with tab_browse:
+        size = st.selectbox("Page size", [10, 25, 50, 100], index=0, key=f"qi_size_{key}")
+        start = st.number_input(
+            "From index (0 = head / front)",
+            min_value=0, value=0, step=int(size), key=f"qi_start_{key}",
+        )
+        start = int(start)
+        page = c.get_redis_list(key, start=start, stop=start + int(size) - 1)
+        if page is None:
+            st.error(c.last_error() or "Could not read entries.")
+        else:
+            items = page.get("items", []) or []
+            if not items:
+                st.info("No entries in this range.")
+            for i, item in enumerate(items):
+                idx = start + i
+                with st.expander(f"#{idx}"):
+                    _entry_actions(key, idx, item, uid=f"{key}_b_{idx}")
+            if items:
+                st.download_button(
+                    "⬇ Export shown",
+                    data=json.dumps(items, indent=2, default=str),
+                    file_name=f"{key.replace(':', '_')}_{start}.json",
+                    mime="application/json",
+                    key=f"qi_dl_{key}",
+                )
+
+    # -- Search --------------------------------------------------------
+    with tab_search:
+        term = st.text_input(
+            "Find text in entries", key=f"qi_find_{key}",
+            placeholder="substring — or use * and ? wildcards",
+            help="Plain text matches any entry that contains it. Add * (any run) "
+                 "or ? (one char) to switch to whole-value wildcard matching, "
+                 "e.g. `*CostCenter*` or `lock:*`. Case-insensitive.",
+        )
+        window = st.slider("Scan the first N entries", 100, 5000, 1000, 100, key=f"qi_win_{key}")
+        if term:
+            scanned = c.get_redis_list(key, start=0, stop=int(window) - 1)
+            items = (scanned or {}).get("items", []) or []
+            tl = term.lower()
+            if any(ch in term for ch in "*?"):
+                # Wildcard: match the whole value (glob-anchored), case-insensitive.
+                matches = [(i, v) for i, v in enumerate(items)
+                           if fnmatch.fnmatchcase(str(v).lower(), tl)]
+            else:
+                # Plain text: contains match, case-insensitive.
+                matches = [(i, v) for i, v in enumerate(items) if tl in str(v).lower()]
+            st.caption(
+                f"{len(matches)} match(es) in the first {min(int(window), depth):,} of "
+                f"{depth:,} entries."
+            )
+            if admin and matches:
+                confirm = st.checkbox(
+                    f"Yes, delete all {len(matches)} matching entries", key=f"qi_delall_ok_{key}"
+                )
+                if st.button("🗑 Delete all matches", key=f"qi_delall_{key}", disabled=not confirm):
+                    removed = 0
+                    for val in {str(v) for _, v in matches}:
+                        res = c.remove_redis_list_value(key, val, count=0)
+                        if res is not None:
+                            removed += res.get("removed", 0) or 0
+                    st.success(f"Removed {removed} entr{'y' if removed == 1 else 'ies'}.")
+                    st.rerun()
+            for idx, val in matches[:200]:
+                with st.expander(f"#{idx}"):
+                    _entry_actions(key, idx, val, uid=f"{key}_s_{idx}")
+            if len(matches) > 200:
+                st.caption("Showing first 200 matches.")
+
+    # -- Modify --------------------------------------------------------
+    with tab_modify:
+        if not admin:
+            st.info("Sign in as admin to push or pop.")
+        else:
+            st.markdown("**Bulk push** — one value per line")
+            vals = st.text_area("Values", key=f"qi_push_{key}", height=120,
+                                label_visibility="collapsed")
+            where = st.radio("Push to", ["Back (tail)", "Front (head)"],
+                             horizontal=True, key=f"qi_dir_{key}")
+            if st.button("⬆ Push", key=f"qi_pushbtn_{key}"):
+                values = [ln for ln in vals.splitlines() if ln.strip() != ""]
+                if not values:
+                    st.warning("Nothing to push.")
                 else:
-                    st.write("No consumer groups.")
+                    direction = "left" if where.startswith("Front") else "right"
+                    res = c.push_redis_list(key, values, direction=direction)
+                    if res is not None:
+                        st.success(f"Pushed {len(values)} — new length {res.get('length'):,}.")
+                        st.rerun()
+                    else:
+                        st.error(c.last_error() or "Could not push.")
+            st.divider()
+            st.markdown("**Pop one entry**")
+            if st.button("⤺ Pop from front", key=f"qi_popf_{key}"):
+                res = c.pop_redis_list(key, direction="left")
+                if res is not None:
+                    st.success(f"Popped: {res.get('value')!r}")
+                    st.rerun()
+                else:
+                    st.error(c.last_error() or "Could not pop.")
+            if st.button("Pop from back ⤻", key=f"qi_popb_{key}"):
+                res = c.pop_redis_list(key, direction="right")
+                if res is not None:
+                    st.success(f"Popped: {res.get('value')!r}")
+                    st.rerun()
+                else:
+                    st.error(c.last_error() or "Could not pop.")
+
+
+def _render_stream_inspector(key: str, detail: dict) -> None:
+    groups = detail.get("consumer_groups") or []
+    if groups:
+        st.markdown("**Consumer groups**")
+        for g in groups:
+            st.write(
+                f"- **{g.get('name')}** — {g.get('consumers', 0)} consumer(s), "
+                f"{g.get('pending', 0)} pending, last {g.get('last_delivered_id', '—')}"
+            )
+    sample = detail.get("sample_oldest") or []
+    st.markdown("**Newest entries**" if not sample else "**Oldest entries (sample)**")
+    entries = c.get_redis_stream(key, start="-", end="+", count=20)
+    rows = (entries or {}).get("items", []) or sample
+    if not rows:
+        st.info("No entries.")
+    for entry in rows:
+        label = entry.get("id", "?") if isinstance(entry, dict) else "entry"
+        with st.expander(f"📨 {label}"):
+            _render_value(entry.get("fields") if isinstance(entry, dict) else entry)
+
+
+with insp_col:
+    target = st.session_state.get(SEL)
+    if not target:
+        st.info("← Click a queue on the left to open it.")
+    else:
+        detail = c.get_redis_queue(target, sample_count=10)
+        if detail is None:
+            st.error(c.last_error() or f"Could not inspect '{target}'.")
+        else:
+            qtype = detail.get("type", "?")
+            depth = detail.get("depth", 0) or 0
+
+            st.markdown(f"### {_icon(qtype)} `{target}`")
+            d1, d2, d3 = st.columns(3)
+            d1.metric("Type", qtype)
+            d2.metric("Depth", f"{depth:,}")
+            oldest = detail.get("oldest_pending_age_seconds")
+            d3.metric("Oldest pending", seconds_to_human(oldest) if oldest is not None else "—")
+
+            if qtype == "list":
+                _render_list_inspector(target, depth)
+            elif qtype == "stream":
+                _render_stream_inspector(target, detail)
+            else:
+                st.info("Unsupported queue type for the inspector.")
+                for i, item in enumerate(detail.get("sample_oldest") or []):
+                    with st.expander(f"message {i}"):
+                        _render_value(item)
+
+            # -- Danger zone: empty the whole queue ------------------------
+            if admin:
+                with st.expander("🧨 Danger zone — empty this queue"):
+                    st.caption(
+                        f"Deletes the key **{target}** and all {depth:,} entries. "
+                        "This cannot be undone."
+                    )
+                    ok = st.checkbox(f"Yes, empty and delete '{target}'", key=f"qi_empty_ok_{target}")
+                    if st.button("Empty / delete queue", key=f"qi_empty_{target}", disabled=not ok):
+                        res = c.delete_redis_key(target)
+                        if res is not None:
+                            st.success(f"Emptied and deleted '{target}'.")
+                            st.session_state.pop(SEL, None)
+                            st.rerun()
+                        else:
+                            st.error(c.last_error() or "Could not delete the queue.")
+
+# ---------------------------------------------------------------------------
+# Arm the refresh timer last, so a slow scan cannot restart the page mid-load.
+# ---------------------------------------------------------------------------
+
+if auto_refresh:
+    st_autorefresh(interval=10_000, key="queues_refresh")

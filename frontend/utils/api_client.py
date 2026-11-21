@@ -12,15 +12,27 @@ Instantiate once per session using @st.cache_resource:
     def get_client() -> EngineClient:
         cfg = get_config()
         return EngineClient(cfg["base_url"], cfg.get("api_key"))
+
+Note: because the client is cached with @st.cache_resource it is shared by
+every browser session, so per-user identity must never be stored on it. The
+caller's Caddy auth headers are read from st.context on each request instead
+(see _identity_headers).
 """
 
 from __future__ import annotations
 
 import os
 from typing import Any
+from urllib.parse import quote
 
 import requests
 import streamlit as st
+
+
+# Endpoints that scan large keyspaces need more than the default budget on a
+# busy Redis instance.
+DEFAULT_TIMEOUT = 15
+SLOW_TIMEOUT = 60
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +53,57 @@ def get_config() -> dict:
         "base_url": (_secret("MYENGINE_URL", "http://localhost:8000")).rstrip("/"),
         "api_key": _secret("MYENGINE_API_KEY") or None,
         "refresh_interval": int(_secret("REFRESH_INTERVAL", 10)),
+        # Name shown for the overview page (nav item + header). Set per
+        # deployment so a project-scoped instance reads as that project.
+        "dashboard_title": (
+            _secret("DASHBOARD_TITLE") or _secret("PROJECT_NAME") or "Dashboard"
+        ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Caller identity (Caddy → Streamlit → Portcullis)
+# ---------------------------------------------------------------------------
+
+_FORWARDED_HEADERS = ("x-user-groups", "x-user", "x-token-user-name")
+
+
+def _identity_headers() -> dict:
+    """Forward the reverse proxy's auth headers from the browser request.
+
+    Portcullis derives its role from `X-User-Groups`; without this the API only
+    ever sees an anonymous reader and every admin action returns 403.
+    """
+    try:
+        incoming = st.context.headers or {}
+    except Exception:
+        return {}
+
+    forwarded = {}
+    for name in _FORWARDED_HEADERS:
+        value = incoming.get(name)
+        if value:
+            forwarded[name] = value
+    return forwarded
+
+
+def current_role() -> str:
+    """Role the API will apply to this user: admin | developer | reader."""
+    groups = _identity_headers().get("x-user-groups", "")
+    if "authp/admin" in groups:
+        return "admin"
+    if "authp/user" in groups:
+        return "developer"
+    return "reader"
+
+
+def is_admin() -> bool:
+    return current_role() == "admin"
+
+
+def _key_path(key: str) -> str:
+    """Percent-encode a Redis key for use as a single URL path segment."""
+    return quote(key, safe="")
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +134,13 @@ class EngineClient:
 
         if not resp.ok:
             err = body.get("error") or {}
-            msg = err.get("message") or f"HTTP {resp.status_code}"
+            detail = body.get("detail")
+            msg = err.get("message") or (detail if isinstance(detail, str) else None)
+            if not msg:
+                msg = f"HTTP {resp.status_code}"
             code = err.get("code", "")
+            if resp.status_code == 403:
+                msg = f"{msg} (admin role required — sign in as an admin user)"
             self._set_error(f"{code}: {msg}" if code else msg)
             return None
 
@@ -96,52 +163,63 @@ class EngineClient:
         except Exception:
             pass
 
-    def _get(self, path: str, params: dict | None = None) -> Any:
+    def last_error(self) -> str | None:
+        """Error from the most recent call, or None if it succeeded."""
+        try:
+            return st.session_state.get("last_error")
+        except Exception:
+            return None
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict | None = None,
+        json: dict | None = None,
+        timeout: int = DEFAULT_TIMEOUT,
+    ) -> Any:
         self._clear_error()
         try:
-            resp = self._session.get(f"{self._base}{path}", params=params, timeout=15)
+            resp = self._session.request(
+                method,
+                f"{self._base}{path}",
+                params=params,
+                json=json,
+                headers=_identity_headers(),
+                timeout=timeout,
+            )
             return self._unwrap(resp)
+        except requests.Timeout:
+            self._set_error(f"Request timed out after {timeout}s: {path}")
+            return None
         except requests.RequestException as exc:
             self._set_error(str(exc))
             return None
 
-    def _post(self, path: str, json: dict | None = None, params: dict | None = None) -> Any:
-        self._clear_error()
-        try:
-            resp = self._session.post(
-                f"{self._base}{path}", json=json or {}, params=params, timeout=15
-            )
-            return self._unwrap(resp)
-        except requests.RequestException as exc:
-            self._set_error(str(exc))
-            return None
+    def _get(self, path: str, params: dict | None = None, timeout: int = DEFAULT_TIMEOUT) -> Any:
+        return self._request("GET", path, params=params, timeout=timeout)
+
+    def _post(
+        self,
+        path: str,
+        json: dict | None = None,
+        params: dict | None = None,
+        timeout: int = DEFAULT_TIMEOUT,
+    ) -> Any:
+        return self._request("POST", path, params=params, json=json or {}, timeout=timeout)
 
     def _delete(self, path: str, params: dict | None = None, json: dict | None = None) -> Any:
-        self._clear_error()
-        try:
-            resp = self._session.delete(
-                f"{self._base}{path}", params=params, json=json, timeout=15
-            )
-            return self._unwrap(resp)
-        except requests.RequestException as exc:
-            self._set_error(str(exc))
-            return None
+        return self._request("DELETE", path, params=params, json=json)
 
     def _put(self, path: str, json: dict | None = None) -> Any:
-        self._clear_error()
-        try:
-            resp = self._session.put(f"{self._base}{path}", json=json or {}, timeout=15)
-            return self._unwrap(resp)
-        except requests.RequestException as exc:
-            self._set_error(str(exc))
-            return None
+        return self._request("PUT", path, json=json or {})
 
     # ------------------------------------------------------------------
     # Overview
     # ------------------------------------------------------------------
 
     def get_overview(self) -> dict | None:
-        return self._get("/overview")
+        return self._get("/overview", timeout=SLOW_TIMEOUT)
 
     # ------------------------------------------------------------------
     # Health
@@ -160,6 +238,7 @@ class EngineClient:
     def get_redis_keys(
         self, pattern: str = "*", cursor: int = 0, count: int = 50, key_type: str | None = None
     ) -> dict | None:
+        """Returns {"keys": [{key, type, ttl}], "cursor": N, "count": N}."""
         params: dict = {"pattern": pattern, "cursor": cursor, "count": count}
         if key_type and key_type != "all":
             params["type"] = key_type
@@ -173,8 +252,14 @@ class EngineClient:
             return data
         return data.get("count")
 
-    def get_redis_key(self, key: str) -> dict | None:
-        return self._get(f"/redis/keys/{key}")
+    def get_redis_key(self, key: str, offset: int = 0, count: int = 200) -> dict | None:
+        return self._get(
+            f"/redis/keys/{_key_path(key)}",
+            params={"offset": offset, "count": count},
+        )
+
+    def get_redis_key_metadata(self, key: str) -> dict | None:
+        return self._get(f"/redis/keys/{_key_path(key)}/metadata")
 
     def set_redis_key(
         self,
@@ -186,22 +271,106 @@ class EngineClient:
         body: dict = {"type": key_type, "value": value}
         if ttl is not None and ttl > 0:
             body["ttl"] = ttl
-        return self._put(f"/redis/keys/{key}", json=body)
+        return self._put(f"/redis/keys/{_key_path(key)}", json=body)
 
     def delete_redis_key(self, key: str) -> dict | None:
-        return self._delete(f"/redis/keys/{key}")
+        return self._delete(f"/redis/keys/{_key_path(key)}")
 
     def bulk_delete_redis_keys(self, keys: list[str]) -> dict | None:
         return self._delete("/redis/keys", json={"keys": keys})
 
     def get_redis_key_ttl(self, key: str) -> dict | None:
-        return self._get(f"/redis/keys/{key}/ttl")
+        return self._get(f"/redis/keys/{_key_path(key)}/ttl")
 
     def set_redis_key_expire(self, key: str, ttl: int) -> dict | None:
-        return self._post(f"/redis/keys/{key}/expire", json={"ttl": ttl})
+        return self._post(f"/redis/keys/{_key_path(key)}/expire", json={"ttl": ttl})
 
     def persist_redis_key(self, key: str) -> dict | None:
-        return self._post(f"/redis/keys/{key}/persist")
+        return self._post(f"/redis/keys/{_key_path(key)}/persist")
+
+    def rename_redis_key(self, key: str, new_key: str) -> dict | None:
+        return self._post(f"/redis/keys/{_key_path(key)}/rename", json={"new_key": new_key})
+
+    def copy_redis_key(self, key: str, destination: str, replace: bool = False) -> dict | None:
+        return self._post(
+            f"/redis/keys/{_key_path(key)}/copy",
+            json={"destination": destination, "replace": replace},
+        )
+
+    # -- Hash ----------------------------------------------------------
+
+    def set_redis_hash_field(self, key: str, field: str, value: str) -> dict | None:
+        return self._post(
+            f"/redis/keys/{_key_path(key)}/hash/{_key_path(field)}",
+            json={"value": value},
+        )
+
+    def delete_redis_hash_field(self, key: str, field: str) -> dict | None:
+        return self._delete(f"/redis/keys/{_key_path(key)}/hash/{_key_path(field)}")
+
+    # -- List ----------------------------------------------------------
+
+    def get_redis_list(self, key: str, start: int = 0, stop: int = 99) -> dict | None:
+        return self._get(
+            f"/redis/keys/{_key_path(key)}/list",
+            params={"start": start, "stop": stop},
+        )
+
+    def push_redis_list(self, key: str, values: list[str], direction: str = "right") -> dict | None:
+        return self._post(
+            f"/redis/keys/{_key_path(key)}/list/push",
+            json={"values": values, "direction": direction},
+        )
+
+    def pop_redis_list(self, key: str, direction: str = "right") -> dict | None:
+        return self._post(
+            f"/redis/keys/{_key_path(key)}/list/pop",
+            params={"direction": direction},
+        )
+
+    def set_redis_list_index(self, key: str, index: int, value: str) -> dict | None:
+        return self._put(f"/redis/keys/{_key_path(key)}/list/{index}", json={"value": value})
+
+    def remove_redis_list_value(self, key: str, value: str, count: int = 0) -> dict | None:
+        return self._post(
+            f"/redis/keys/{_key_path(key)}/list/remove",
+            json={"value": value, "count": count},
+        )
+
+    # -- Set -----------------------------------------------------------
+
+    def add_redis_set_members(self, key: str, members: list[str]) -> dict | None:
+        return self._post(f"/redis/keys/{_key_path(key)}/set/add", json={"members": members})
+
+    def remove_redis_set_member(self, key: str, member: str) -> dict | None:
+        return self._delete(f"/redis/keys/{_key_path(key)}/set/{_key_path(member)}")
+
+    # -- Sorted set ----------------------------------------------------
+
+    def add_redis_zset_member(self, key: str, member: str, score: float) -> dict | None:
+        return self._post(
+            f"/redis/keys/{_key_path(key)}/zset/add",
+            json={"members": [{"member": member, "score": score}]},
+        )
+
+    def remove_redis_zset_member(self, key: str, member: str) -> dict | None:
+        return self._delete(f"/redis/keys/{_key_path(key)}/zset/{_key_path(member)}")
+
+    # -- Stream --------------------------------------------------------
+
+    def get_redis_stream(
+        self, key: str, start: str = "-", end: str = "+", count: int = 100
+    ) -> dict | None:
+        return self._get(
+            f"/redis/keys/{_key_path(key)}/stream",
+            params={"start": start, "end": end, "count": count},
+        )
+
+    def get_redis_stream_info(self, key: str) -> dict | None:
+        return self._get(f"/redis/keys/{_key_path(key)}/stream/info")
+
+    def delete_redis_stream_entry(self, key: str, entry_id: str) -> dict | None:
+        return self._delete(f"/redis/keys/{_key_path(key)}/stream/{_key_path(entry_id)}")
 
     # ------------------------------------------------------------------
     # Redis — Server
@@ -289,11 +458,19 @@ class EngineClient:
     # Redis — Analysis
     # ------------------------------------------------------------------
 
-    def get_redis_analysis_keyspace(self) -> dict | None:
-        return self._get("/redis/analysis/keyspace")
+    def get_redis_analysis_keyspace(self, pattern: str = "*") -> dict | None:
+        return self._get(
+            "/redis/analysis/keyspace",
+            params={"pattern": pattern},
+            timeout=SLOW_TIMEOUT,
+        )
 
     def get_redis_analysis_memory_top(self, count: int = 20) -> list | None:
-        data = self._get("/redis/analysis/memory-top", params={"count": count})
+        data = self._get(
+            "/redis/analysis/memory-top",
+            params={"top_n": count},
+            timeout=SLOW_TIMEOUT,
+        )
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
@@ -301,7 +478,11 @@ class EngineClient:
         return None
 
     def get_redis_analysis_expiring_soon(self, seconds: int = 300) -> list | None:
-        data = self._get("/redis/analysis/expiring-soon", params={"seconds": seconds})
+        data = self._get(
+            "/redis/analysis/expiring-soon",
+            params={"within_seconds": seconds},
+            timeout=SLOW_TIMEOUT,
+        )
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
@@ -312,13 +493,20 @@ class EngineClient:
     # Redis — Queues
     # ------------------------------------------------------------------
 
-    def get_redis_queues(self) -> list | None:
-        data = self._get("/redis/queues")
+    def get_redis_queues(self, pattern: str = "*", max_keys: int = 500) -> list | None:
+        data = self._get(
+            "/redis/queues",
+            params={"pattern": pattern, "max_keys": max_keys},
+            timeout=SLOW_TIMEOUT,
+        )
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
             return data.get("queues", [])
         return None
 
-    def get_redis_queue(self, key: str) -> dict | None:
-        return self._get(f"/redis/queues/{key}")
+    def get_redis_queue(self, key: str, sample_count: int = 10) -> dict | None:
+        return self._get(
+            f"/redis/queues/{_key_path(key)}",
+            params={"sample_count": sample_count},
+        )

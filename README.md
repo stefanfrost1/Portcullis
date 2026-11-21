@@ -146,6 +146,23 @@ MYENGINE_URL=http://localhost:8000 streamlit run app.py
 
 ---
 
+## Roles
+
+Portcullis reads the reverse proxy's `X-User-Groups` header (set by Caddy's
+`authp`) to decide what a caller may do:
+
+| Role | Header contains | Can do |
+|---|---|---|
+| `admin` | `authp/admin` | Everything, including create / remove / config changes |
+| `developer` | `authp/user` | Read-only |
+| `reader` | _(no header)_ | Read-only |
+
+Every `GET` is available to all three; only state-changing calls require
+`admin`. The Streamlit frontend forwards the header from the browser request,
+so an admin keeps admin rights through the UI.
+
+---
+
 ## Enabling API key authentication
 
 1. Uncomment these lines in `docker-compose.yml`:

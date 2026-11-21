@@ -2,7 +2,8 @@
 MyEngine Dashboard — Overview page.
 
 Shows Redis top-level metrics and queue depths from GET /api/v1/overview.
-Auto-refreshes every REFRESH_INTERVAL seconds (default 10).
+Static by default — use the "↻ Refresh now" button, or enable Auto-refresh in
+the sidebar (its interval seeds from REFRESH_INTERVAL).
 """
 
 import streamlit as st
@@ -13,8 +14,10 @@ from utils.api_client import EngineClient, get_config
 from utils.formatting import bytes_to_human, health_badge
 
 
+_dashboard_title = get_config()["dashboard_title"]
+
 st.set_page_config(
-    page_title="MyEngine Dashboard",
+    page_title=_dashboard_title,
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -37,17 +40,34 @@ def client() -> EngineClient:
 
 # ---------------------------------------------------------------------------
 # Auto-refresh
+#
+# The refresh timer is armed at the *bottom* of this script, after the data has
+# been fetched. Arming it up here restarts the page mid-fetch on a slow host,
+# which leaves the dashboard permanently loading.
 # ---------------------------------------------------------------------------
 
 cfg = get_config()
-refresh_ms = cfg["refresh_interval"] * 1000
-st_autorefresh(interval=refresh_ms, key="dashboard_refresh")
+
+with st.sidebar:
+    # Off by default — the page stays static and is refreshed with the button
+    # below (or by enabling this). Set REFRESH_INTERVAL to seed the interval.
+    auto_refresh = st.checkbox("Auto-refresh", value=False)
+    refresh_secs = st.slider(
+        "Refresh interval (s)",
+        min_value=10,
+        max_value=600,
+        value=min(600, max(10, cfg["refresh_interval"])),
+        step=10,
+        disabled=not auto_refresh,
+    )
+    if st.button("↻ Refresh now"):
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Page header
 # ---------------------------------------------------------------------------
 
-st.title("📊 MyEngine Dashboard")
+st.title(f"📊 {_dashboard_title}")
 
 c = client()
 
@@ -60,7 +80,9 @@ with col_h1:
     st.markdown(f"**Redis** {health_badge(redis_ok)}")
 with col_h2:
     import datetime
-    st.caption(f"Last updated: {datetime.datetime.now().strftime('%H:%M:%S')} · auto-refresh every {cfg['refresh_interval']}s")
+    stamp = datetime.datetime.now().strftime("%H:%M:%S")
+    refresh_note = f"auto-refresh every {refresh_secs}s" if auto_refresh else "auto-refresh off"
+    st.caption(f"Last updated: {stamp} · {refresh_note}")
 
 st.divider()
 
@@ -68,10 +90,11 @@ st.divider()
 # Overview data
 # ---------------------------------------------------------------------------
 
-overview = c.get_overview()
+with st.spinner("Loading Redis overview…"):
+    overview = c.get_overview()
 
-if "last_error" in st.session_state:
-    st.error(st.session_state["last_error"])
+if c.last_error():
+    st.error(c.last_error())
 
 # Safe accessors
 redis_data = (overview or {}).get("redis", {}) or {}
@@ -133,3 +156,10 @@ else:
         font=dict(color="#fafafa"),
     )
     st.plotly_chart(fig2, width="stretch")
+
+# ---------------------------------------------------------------------------
+# Arm the refresh timer last — see the note at the top of this file.
+# ---------------------------------------------------------------------------
+
+if auto_refresh:
+    st_autorefresh(interval=refresh_secs * 1000, key="dashboard_refresh")
