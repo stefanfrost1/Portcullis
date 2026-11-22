@@ -1,11 +1,10 @@
 """
-Portcullis — Docker + Redis management bridge service.
+Portcullis — Redis management bridge service.
 
-Provides a REST + WebSocket API for the UI to interact with:
-  - The Docker daemon (containers, images, networks, volumes, logs)
-  - Redis (key browser, server ops, pub/sub, monitor, analysis)
+Provides a REST + WebSocket API for the UI to interact with Redis
+(key browser, server ops, pub/sub, monitor, analysis, queue depth).
 
-Neither the Docker socket nor Redis is exposed directly to the UI.
+Redis is never exposed directly to the UI.
 
 Base path: /api/v1
 """
@@ -20,9 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
-from src.routers import containers, logs, images, networks, volumes, system
 from src.routers import redis_keys, redis_server, redis_queues, overview
-from src.services import docker_service as ds
 from src.services import redis_service as rs
 
 API_PREFIX = "/api/v1"
@@ -39,7 +36,6 @@ logging.basicConfig(
 logger = logging.getLogger("portcullis")
 
 # Quieten noisy third-party loggers
-logging.getLogger("docker").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
@@ -52,12 +48,6 @@ async def lifespan(app: FastAPI):
     # Startup: warn if external services unreachable (don't block startup)
     logger.info("Portcullis starting up…")
     try:
-        info = ds.get_system_info()
-        logger.info("Docker daemon OK (version %s)", info.get("docker_version", "?"))
-    except Exception as exc:
-        logger.warning("Docker daemon unavailable at startup — Docker endpoints will return 503: %s", exc)
-
-    try:
         rs.get_info("server")
         logger.info("Redis OK")
     except Exception as exc:
@@ -67,7 +57,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Portcullis shutting down…")
-    ds.close_docker_client()
     rs.close_all_pools()
     logger.info("Shutdown complete")
 
@@ -77,16 +66,15 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Portcullis — Docker & Redis Bridge",
+    title="Portcullis — Redis Bridge",
     description=(
-        "Shields the UI from direct Docker socket and Redis access. "
-        "Exposes container management, log streaming, image/network/volume ops, "
-        "and a full Redis operations API (key browser, server info, pub/sub, "
+        "Shields the UI from direct Redis access. "
+        "Exposes a full Redis operations API (key browser, server info, pub/sub, "
         "MONITOR stream, keyspace analysis, slow log, memory stats, and more). "
         "Includes a single-call `/overview` endpoint for monitoring dashboards "
         "and queue-depth monitoring for List and Stream keys."
     ),
-    version="3.1.0",
+    version="4.0.0",
     docs_url=f"{API_PREFIX}/docs",
     redoc_url=f"{API_PREFIX}/redoc",
     openapi_url=f"{API_PREFIX}/openapi.json",
@@ -226,20 +214,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # Routers
 # ---------------------------------------------------------------------------
 
-app.include_router(containers.router, prefix=API_PREFIX)
-app.include_router(logs.router, prefix=API_PREFIX)        # /api/v1/containers/{id}/logs/…
-app.include_router(logs.global_router, prefix=API_PREFIX) # /api/v1/logs/search
-app.include_router(images.router, prefix=API_PREFIX)
-app.include_router(networks.router, prefix=API_PREFIX)
-app.include_router(volumes.router, prefix=API_PREFIX)
-app.include_router(system.router, prefix=API_PREFIX)
-
 # Redis routers — /api/v1/redis/…
 app.include_router(redis_keys.router, prefix=API_PREFIX)    # key browser + type operations
 app.include_router(redis_server.router, prefix=API_PREFIX)  # server ops, monitoring, analysis
 app.include_router(redis_queues.router, prefix=API_PREFIX)  # queue depth monitoring
 
-# Aggregate overview — /api/v1/overview
+# Aggregate overview + health — /api/v1/overview, /api/v1/health
 app.include_router(overview.router, prefix=API_PREFIX)
 
 

@@ -11,22 +11,22 @@ This file provides context, conventions, and workflows for AI assistants (and hu
 | **Name**    | Portcullis                                                            |
 | **Remote**  | stefanfrost1/Portcullis                                               |
 | **Branch**  | Work on feature branches; never push directly to `main`              |
-| **Purpose** | REST + WebSocket bridge between a UI and Docker daemon / Redis       |
+| **Purpose** | REST + WebSocket bridge between a UI and Redis                       |
 | **Runtime** | Python 3.12, FastAPI 0.115, Uvicorn 0.34                            |
-| **Version** | 3.1.0 (see `src/main.py`)                                            |
+| **Version** | 4.0.0 (see `src/main.py`)                                            |
 
 ---
 
 ## What This Service Does
 
-Portcullis shields a UI from direct Docker socket and Redis access. It exposes three groups of functionality over a single FastAPI application:
+Portcullis shields a UI from direct Redis access. It exposes the following over a single FastAPI application:
 
-1. **Docker management** — containers (list, inspect, stats, lifecycle), images, networks, volumes, system info, disk usage, and a real-time Docker events WebSocket stream.
-2. **Log access** — per-container tail/stream/search and a cross-container global search with timestamp-aware context windows.
-3. **Redis management** — key browser (string/hash/list/set/zset/stream CRUD), server ops (INFO, CONFIG, BGSAVE, FLUSHDB, …), pub/sub, MONITOR stream, keyspace analysis, slow log, memory stats, latency tracking, and queue-depth monitoring.
-4. **Aggregate overview** — a single `GET /api/v1/overview` endpoint that combines Docker + Redis high-level stats for monitoring dashboards.
+1. **Redis management** — key browser (string/hash/list/set/zset/stream CRUD), server ops (INFO, CONFIG, BGSAVE, FLUSHDB, …), pub/sub, MONITOR stream, keyspace analysis, slow log, memory stats, latency tracking, and queue-depth monitoring.
+2. **Aggregate overview** — a single `GET /api/v1/overview` endpoint with Redis high-level stats and top queue depths for monitoring dashboards.
 
-Neither the Docker socket nor Redis is exposed to the UI directly. Destructive and administrative operations are restricted to the `admin` role via Caddy-injected headers (see [RBAC](#rbac--caddy-header-auth) below).
+Redis is never exposed to the UI directly. Destructive and administrative operations are restricted to the `admin` role via Caddy-injected headers (see [RBAC](#rbac--caddy-header-auth) below).
+
+> Docker management (containers, logs, images, networks, volumes, system, Compose project scoping) was removed in v4.0.0 as the deployment target moved from Docker to Kubernetes.
 
 ---
 
@@ -50,17 +50,11 @@ Portcullis/
 │   ├── .streamlit/
 │   │   └── config.toml          # Streamlit server config
 │   ├── app_pages/
-│   │   ├── Dashboard.py         # Combined Docker + Redis overview
-│   │   ├── 1_Containers.py      # Container list, inspect, lifecycle
-│   │   ├── 2_Images.py          # Image list, pull, remove
-│   │   ├── 3_Networks.py        # Network list, inspect, create, remove
-│   │   ├── 4_Volumes.py         # Volume list, inspect, create, remove
-│   │   ├── 5_System.py          # Docker system info and disk usage
+│   │   ├── Dashboard.py         # Redis overview + top queues
 │   │   ├── 6_Redis_Keys.py      # Redis key browser
 │   │   ├── 7_Redis_Server.py    # Redis server ops and monitoring
 │   │   ├── 8_Redis_Analysis.py  # Keyspace analysis, memory-top, expiring-soon
-│   │   ├── 9_Redis_Queues.py    # Queue depth monitoring
-│   │   └── 10_Log_Search.py     # Per-container and global log search
+│   │   └── 9_Redis_Queues.py    # Queue depth monitoring
 │   └── utils/
 │       ├── api_client.py        # Typed API client for all backend endpoints
 │       └── formatting.py        # Shared display helpers
@@ -69,23 +63,15 @@ Portcullis/
     ├── config.py                # Pydantic-settings config (env vars)
     ├── __init__.py
     ├── models/
-    │   ├── schemas.py           # Docker-facing Pydantic models + APIResponse envelope
+    │   ├── schemas.py           # Generic APIResponse envelope
     │   └── redis_schemas.py     # Redis request/body Pydantic models
     ├── routers/
     │   ├── _auth.py             # RBAC dependency (get_role / require_admin)
-    │   ├── _docker_errors.py    # Shared Docker exception → HTTPException helper
-    │   ├── containers.py        # /containers — list, inspect, stats, lifecycle
-    │   ├── logs.py              # /containers/{id}/logs + /logs global router
-    │   ├── images.py            # /images — list, inspect, pull, remove, prune
-    │   ├── networks.py          # /networks — list, inspect, create, remove
-    │   ├── volumes.py           # /volumes — list, inspect, create, remove, prune
-    │   ├── system.py            # /system/info, /system/df, WS /system/events, /health
-    │   ├── overview.py          # /overview — combined Docker + Redis snapshot
+    │   ├── overview.py          # /overview — Redis snapshot; /health — Redis reachability
     │   ├── redis_keys.py        # /redis/keys — key browser + type operations
     │   ├── redis_server.py      # /redis — server ops, pub/sub, MONITOR WS, analysis
     │   └── redis_queues.py      # /redis/queues — queue depth monitoring
     └── services/
-        ├── docker_service.py    # Docker SDK wrapper (lazy singleton client)
         └── redis_service.py     # Redis connection pool wrapper
 ```
 
@@ -106,86 +92,6 @@ All endpoints are under the base path `/api/v1`. Paths in the tables below are r
 ### Admin restriction legend
 
 🔒 = requires `admin` role (Caddy `X-User-Groups: authp/admin` header). See [RBAC](#rbac--caddy-header-auth).
-
-### Container endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/containers` | List all (or running-only) containers |
-| GET | `/containers/stats/all` | Parallel CPU/mem/IO stats for all running containers |
-| GET | `/containers/groups` | Containers grouped by Compose project label |
-| GET | `/containers/{id}` | 🔒 Inspect a single container |
-| GET | `/containers/{id}/stats` | Single-snapshot CPU/mem/net/block I/O stats |
-| POST | `/containers/{id}/start` | Start a container |
-| POST | `/containers/{id}/stop` | 🔒 Stop a container (`timeout` param) |
-| POST | `/containers/{id}/restart` | 🔒 Restart a container (`timeout` param) |
-| POST | `/containers/{id}/pause` | 🔒 Pause a running container |
-| POST | `/containers/{id}/unpause` | 🔒 Unpause a paused container |
-| DELETE | `/containers/{id}` | **Always 403** — container removal is disabled |
-
-### Log endpoints
-
-Per-container (router prefix `/containers`):
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/containers/{id}/logs` | Fetch up to 2000 tail lines (`since`, `until`, `timestamps` params) |
-| GET | `/containers/{id}/logs/search` | Egrep-style regex search within one container's logs |
-| GET | `/containers/{id}/logs/context` | Lines within ±`window_seconds` of an ISO pivot timestamp |
-| WS  | `/containers/{id}/logs/stream` | WebSocket live log tail (one JSON object per line) |
-| GET | `/containers/{id}/logs/stream` | SSE live log tail (alternative to WebSocket) |
-
-Global cross-container (router prefix `/logs`):
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/logs` | Fetch last N lines from all running containers in parallel |
-| GET | `/logs/search` | Egrep-style regex search across all containers (parallel) |
-| GET | `/logs/context` | Lines from all containers within ±`window_seconds` of a pivot |
-
-### Image endpoints
-
-All image endpoints require 🔒 admin.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET    | `/images` | List images (`all_images` includes intermediate layers) |
-| GET    | `/images/{id}` | Inspect image |
-| POST   | `/images/pull` | Pull image from registry (body: `{repository, tag}`) |
-| POST   | `/images/prune` | Remove dangling images |
-| DELETE | `/images/{id}` | Remove image (`force`, `no_prune` params) |
-
-### Network endpoints
-
-All network endpoints require 🔒 admin.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET    | `/networks` | List networks |
-| GET    | `/networks/{id}` | Inspect network |
-| POST   | `/networks` | Create network (body: `{name, driver, internal, labels}`); returns 201 |
-| DELETE | `/networks/{id}` | Remove network |
-
-### Volume endpoints
-
-All volume endpoints require 🔒 admin.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET    | `/volumes` | List volumes |
-| GET    | `/volumes/{name}` | Inspect volume |
-| POST   | `/volumes` | Create volume (body: `{name, driver, labels}`); returns 201 |
-| POST   | `/volumes/prune` | Remove unused volumes |
-| DELETE | `/volumes/{name}` | Remove volume (`force` param) |
-
-### System endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/system/info` | Docker daemon info + version |
-| GET | `/system/df` | Disk usage breakdown (cached `DISK_USAGE_CACHE_TTL` seconds; own longer `DISK_USAGE_TIMEOUT`; `?refresh=true` to recompute; 503 with reason if the daemon call times out/fails) |
-| WS  | `/system/events` | Real-time Docker daemon event stream |
-| GET | `/health` | Health check — 200 if Docker reachable, 503 otherwise |
 
 ### Redis — Key browser
 
@@ -282,7 +188,8 @@ Read operations are open; write/destructive operations require 🔒 admin.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/overview` | Combined Docker + Redis snapshot; always returns HTTP 200 |
+| GET | `/overview` | Redis snapshot + top queues; always returns HTTP 200 |
+| GET | `/health` | Health check — 200 if Redis reachable, 503 otherwise |
 
 ### Response envelope
 
@@ -301,7 +208,7 @@ Error response:
 }
 ```
 
-HTTP status codes are used semantically. The `/overview` endpoint always returns 200; check the `"status": "error"` field inside each subsection for partial failures.
+HTTP status codes are used semantically. The `/overview` endpoint always returns 200; check the `"status": "error"` field inside the `redis` section for failures.
 
 ---
 
@@ -310,7 +217,6 @@ HTTP status codes are used semantically. The `/overview` endpoint always returns
 ### Prerequisites
 
 - Python 3.12+
-- Docker daemon running (socket at `/var/run/docker.sock`)
 - Redis instance reachable at the configured host/port
 
 ### Install Dependencies
@@ -325,7 +231,7 @@ pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8000
 ```
 
-Or via Docker Compose (recommended — includes Docker socket mount and Redis):
+Or via Docker Compose (local stack with Redis + frontend):
 
 ```bash
 docker compose up --build
@@ -342,14 +248,6 @@ Application settings live in `src/config.py` and are loaded from environment. Bu
 | `API_KEY_ENABLED`       | `false`                                      | Set `true` to require `X-API-Key` on all requests   |
 | `API_KEY`               | `""`                                         | The expected key value when auth is enabled         |
 | `DEBUG`                 | `false`                                      | Enables `DEBUG`-level logging                       |
-| `DOCKER_TIMEOUT`        | `30`                                         | Docker SDK client timeout (seconds)                 |
-| `DOCKER_MAX_POOL_SIZE`  | `32`                                         | Docker SDK connection pool size                     |
-| `DISK_USAGE_CACHE_TTL`  | `60`                                         | Seconds to cache `GET /system/df` results           |
-| `DISK_USAGE_TIMEOUT`    | `120`                                        | Dedicated (longer) socket timeout for the expensive `docker system df` call |
-| `COMPOSE_PROJECT`       | `""`                                         | Scope operational Docker views (containers/volumes/logs) to one exact Compose project (see [Project scoping](#project-scoping)); empty = host-wide |
-| `COMPOSE_PROJECTS`      | `""`                                         | Comma-separated list of exact Compose project names to scope to (OR) |
-| `COMPOSE_PROJECT_PREFIX`| `""`                                         | Scope to every Compose project whose name starts with this prefix |
-| `SCOPE_LABEL`           | `""`                                         | Scope by a custom Docker label you add yourself (`key=value` or bare `key`); takes precedence over the `COMPOSE_PROJECT*` vars; fully daemon-side |
 | `REDIS_HOST`            | `redis`                                      | Redis hostname (use service name in Compose)        |
 | `REDIS_PORT`            | `6379`                                       | Redis port                                          |
 | `REDIS_PASSWORD`        | `null`                                       | Redis password (omit if not set)                    |
@@ -394,81 +292,23 @@ Routers that perform mutations (write, delete, lifecycle actions) declare `requi
 
 ### Service layer
 
-- `docker_service.py` — lazy-initialised singleton `docker.DockerClient`. All methods return plain dicts/primitives; no SDK objects leak into routers.
 - `redis_service.py` — connection pool wrapper (separate decoded + binary pools per DB). Pools are closed cleanly on shutdown via the FastAPI lifespan handler.
-
-### Project scoping
-
-Scope the operational Docker views to one **or more** Compose projects via the
-`com.docker.compose.project` label. Selectors, combined with OR:
-
-| Env var | Meaning |
-|---------|---------|
-| `COMPOSE_PROJECT` | a single exact project name |
-| `COMPOSE_PROJECTS` | comma-separated list of exact project names |
-| `COMPOSE_PROJECT_PREFIX` | match any project whose name starts with this prefix |
-| `SCOPE_LABEL` | a custom label you add to your Compose files (`key=value` or bare `key`) |
-
-Use a single one, or combine the `COMPOSE_PROJECT*` selectors (e.g. a prefix
-plus a couple of extra exact names). All empty (default) = host-wide, unchanged.
-
-`SCOPE_LABEL` is the cleanest way to group several Compose projects into one
-view: add the same label to your services (e.g. `labels: ["com.acme.stack=dev"]`)
-and set `SCOPE_LABEL=com.acme.stack=dev`. Because it is a single exact label it
-filters entirely daemon-side (no in-process narrowing) and **takes precedence**
-over the `COMPOSE_PROJECT*` vars. Caveat: a service's `labels:` land on the
-container only — add the same label to your `volumes:`/`networks:` definitions
-if you want those scoped too (the `com.docker.compose.project` label, by
-contrast, is applied by Compose to all three automatically).
-
-**How filtering happens** (`_project_filters()` + the `_list_scoped_*` helpers):
-
-- A **single exact** name is pushed to the daemon as an exact label filter — the
-  daemon returns only that project's resources (cheapest; no inspect of others).
-- A **list or prefix** cannot be expressed by Docker's label filter (no OR, no
-  prefix), so the daemon is asked only for resources that *have* a
-  compose-project label and Portcullis narrows them in-process via
-  `_project_matches()` (`_needs_client_narrow()` gates this).
-
-Scope surface:
-
-- **Scoped:** container list/stats/groups, the global log endpoints
-  (`/logs`, `/logs/search`, `/logs/context`), volumes, and the
-  container/volume/compose sections of `/overview` (which also carries a
-  `project_scope` description field).
-- **Not scoped (host-wide reference):** images and networks — reference
-  resources, and Compose does not stamp the project label on pulled images, so
-  filtering images would hide all of them. Also unscoped: single-resource
-  inspects by id/name (a caller with an id already has the resource).
-
-Independently of scoping, the fan-out helpers (`/containers/stats/all` and the
-global log endpoints) list containers with `sparse=True` — they only need id +
-name, so they skip the per-container inspect that the SDK's default listing
-does. Use `_container_name()` to read a name off a sparse model, and
-`_container_project()` to read its compose-project label.
-
-The frontend's own `COMPOSE_PROJECT` (optional, cosmetic) only drives a
-"Scoped to project" caption on the Containers, Volumes, and Dashboard pages; the actual
-scoping is entirely backend-side.
 
 ### Error handling
 
-- **Router level:** Docker exceptions are translated by `_docker_errors.handle_docker_exc()` into typed `HTTPException` responses (`404`, `409`, `503`, etc.).
+- **Router level:** `RedisError` exceptions are caught in each router and raised as `HTTPException`.
 - **Global fallback:** `unhandled_exception_handler` in `main.py` logs the full traceback internally and returns a generic `500` — stack traces are never exposed to clients.
 
 ### WebSocket / streaming endpoints
 
 | Path | Description |
 |------|-------------|
-| `/api/v1/system/events` | Docker daemon event stream |
-| `/api/v1/containers/{id}/logs/stream` | Live log tail (WebSocket) |
-| `/api/v1/containers/{id}/logs/stream` | Live log tail (SSE, same path, HTTP GET) |
 | `/api/v1/redis/pubsub/subscribe` | Redis pub/sub subscription stream |
 | `/api/v1/redis/monitor` | 🔒 Redis MONITOR command stream |
 
 ### Lifespan
 
-On startup the app pings both Docker and Redis and logs warnings (not errors) if either is unreachable — endpoints return `503` dynamically if a dependency is unavailable, but the service always starts. On shutdown, `close_docker_client()` and `rs.close_all_pools()` are called.
+On startup the app pings Redis and logs a warning (not an error) if it is unreachable — endpoints return errors dynamically while Redis is unavailable, but the service always starts. On shutdown, `rs.close_all_pools()` is called.
 
 ---
 
@@ -479,22 +319,14 @@ The Streamlit frontend (`frontend/`) uses Streamlit's explicit `st.navigation` A
 | Group | Page | File |
 |-------|------|------|
 | Overview | Dashboard (renamable) | `app_pages/Dashboard.py` |
-| Docker | System | `app_pages/5_System.py` |
-| Docker | Logs | `app_pages/10_Log_Search.py` |
-| Docker | Containers | `app_pages/1_Containers.py` |
 | Redis | Redis Server | `app_pages/7_Redis_Server.py` |
 | Redis | Redis Queues | `app_pages/9_Redis_Queues.py` |
 | Redis | Redis Keys | `app_pages/6_Redis_Keys.py` |
 | Redis | Redis Analysis | `app_pages/8_Redis_Analysis.py` |
-| Resources | Volumes | `app_pages/4_Volumes.py` |
-| Resources | Networks | `app_pages/3_Networks.py` |
-| Resources | Images | `app_pages/2_Images.py` |
-
-Volumes, networks, and images sit in a **Resources** section below the day-to-day operational pages (volumes are still project-scoped when `COMPOSE_PROJECT` is set; networks and images stay host-wide). The Containers detail view has a **📋 View logs** button that preselects the container (via `st.session_state`) and jumps to the Logs page.
 
 All API calls go through `frontend/utils/api_client.py`, which wraps every backend endpoint in a typed Python method. Add new API methods there when adding endpoints. `frontend/utils/formatting.py` holds shared display helpers (byte formatting, uptime strings, etc.).
 
-The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`). The scope-mirror vars (`SCOPE_LABEL` / `COMPOSE_PROJECT` / `COMPOSE_PROJECTS` / `COMPOSE_PROJECT_PREFIX`) are cosmetic on the frontend — they only drive the "Scoped to project(s)" caption; set them to match the backend so the UI labels the subset.
+The frontend connects to the backend via the `MYENGINE_URL` environment variable (default: `http://portcullis:8000`). Optional `MYENGINE_API_KEY` sets the `X-API-Key` header when the backend has key auth enabled. `DASHBOARD_TITLE` (or `PROJECT_NAME`) renames the overview page's nav item and header (default `Dashboard`).
 
 ---
 
@@ -507,7 +339,7 @@ No automated tests exist yet. When adding tests:
 - Run with `pytest`
 - Do not commit code that breaks existing tests
 
-The interactive Swagger UI at `/api/v1/docs` can be used for manual endpoint testing against a live Docker + Redis environment.
+The interactive Swagger UI at `/api/v1/docs` can be used for manual endpoint testing against a live Redis instance.
 
 ---
 
@@ -576,8 +408,6 @@ Reference the published images directly — no source code required:
 services:
   portcullis:
     image: simplitics1/portcullis:latest
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - REDIS_HOST=redis
 
@@ -591,7 +421,6 @@ services:
 
 ```bash
 docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e REDIS_HOST=<redis-host> \
   -p 8000:8000 \
   simplitics1/portcullis:latest
@@ -624,8 +453,8 @@ Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
 
 Examples:
 ```
-feat(logs): add global cross-container log search endpoint
-fix(containers): handle 409 conflict on remove
+feat(redis): add LATENCY HISTORY endpoint
+fix(redis): handle missing key on rename
 docs: update CLAUDE.md with actual API surface
 ```
 
@@ -654,14 +483,14 @@ Each router module:
 
 ### Model pattern
 
-- `src/models/schemas.py` — Docker-domain models + generic `APIResponse` envelope
+- `src/models/schemas.py` — generic `APIResponse` envelope
 - `src/models/redis_schemas.py` — Redis request body models
 
 Do not add fields to response models that the service layer does not actually return.
 
 ### Service layer
 
-- Services hold the external-dependency logic (Docker SDK calls, Redis commands)
+- Services hold the external-dependency logic (Redis commands)
 - Services return plain dicts/primitives — never SDK objects
 - Connection lifecycle is managed by the lifespan context manager in `main.py`
 
@@ -670,7 +499,6 @@ Do not add fields to response models that the service layer does not actually re
 - Never commit secrets or credentials
 - Validate all user input at router boundaries (Pydantic models + Query params with `ge`/`le` constraints)
 - Destructive operations (`flushdb`, `flushall`) require both admin role **and** `?confirm=true`
-- Container removal is permanently disabled (returns 403) — remove containers via Docker directly
 
 ---
 
@@ -731,4 +559,4 @@ This CLAUDE.md should be updated whenever:
 - Development workflows change
 - New conventions are adopted by the team
 
-*Last updated: 2026-08-11 (re-synced on main after merge — Portcullis rename, RBAC, log search, GitHub Actions CI, build.sh/build.ps1 + Docker Hub simplitics1, df caching)*
+*Last updated: 2026-11-21 (v4.0.0 — Docker management removed; Redis-only)*

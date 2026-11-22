@@ -1,6 +1,6 @@
 # Portcullis + Streamlit Dashboard
 
-A Docker and Redis management platform consisting of:
+A Redis management platform consisting of:
 
 | Service | Description | Default URL |
 |---|---|---|
@@ -74,40 +74,10 @@ docker compose down -v
 ## What the UI does
 
 ### Dashboard (`/`)
-Live overview combining Docker + Redis metrics on one screen. Auto-refreshes every 10 seconds.
+Live Redis overview on one screen. Auto-refreshes every 10 seconds.
 
-- Container counts (running / paused / stopped)
-- Image and volume counts
 - Redis: connected clients, memory, keyspace size, ops/sec, hit rate
-- Container state pie chart
 - Top queues bar chart
-
-### Containers
-- Full container list with state, image, status, uptime, and ports
-- Per-container lifecycle controls: **Start / Stop / Restart / Pause / Unpause / Remove**
-- Live stats tab: CPU%, memory%, network I/O, block I/O
-- Compose project grouping tab
-
-### Images
-- List all images with tags, size, and creation date
-- Pull a new image by name (e.g. `nginx:latest`)
-- Remove images (with confirmation)
-
-### Networks
-- List networks with driver, scope, and attached container count
-- Create a new network (choose driver, set internal flag)
-- Inspect: see which containers are attached
-- Remove (built-in networks are protected)
-
-### Volumes
-- List volumes with driver and mountpoint
-- Create a new volume
-- Remove (with confirmation)
-
-### System
-- Docker daemon version, kernel, OS, CPU count, total memory
-- Disk usage breakdown: images / containers / volumes / build cache
-- Disk usage bar chart
 
 ### Redis Keys
 - Paginated key browser with pattern and type filters
@@ -173,9 +143,6 @@ MYENGINE_URL=http://localhost:8000 streamlit run app.py
 | `API_KEY` | _(empty)_ | The API key value (used when auth is enabled) |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
 | `PORT` | `8000` | Uvicorn listen port |
-| `DOCKER_TIMEOUT` | `30` | Docker socket read timeout (seconds) |
-| `DOCKER_MAX_POOL_SIZE` | `32` | Max concurrent connections to the Docker daemon |
-| `DISK_USAGE_CACHE_TTL` | `60` | Seconds to cache `docker system df` (0 disables) |
 
 ---
 
@@ -192,8 +159,7 @@ Portcullis reads the reverse proxy's `X-User-Groups` header (set by Caddy's
 
 Every `GET` is available to all three; only state-changing calls require
 `admin`. The Streamlit frontend forwards the header from the browser request,
-so an admin keeps admin rights through the UI. Container removal is disabled
-outright — `DELETE /containers/{id}` always returns 403.
+so an admin keeps admin rights through the UI.
 
 ---
 
@@ -245,7 +211,7 @@ Portcullis/
 │   └── services/
 └── frontend/                # Streamlit dashboard
     ├── app.py               # Dashboard entry point
-    ├── pages/               # One file per page (auto-discovered by Streamlit)
+    ├── app_pages/           # One file per page (routed explicitly from app.py)
     ├── utils/
     │   ├── api_client.py    # EngineClient — all API calls
     │   └── formatting.py    # Human-readable helpers

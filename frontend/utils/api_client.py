@@ -29,14 +29,10 @@ import requests
 import streamlit as st
 
 
-# Endpoints that walk every container or the whole image store need more than
-# the default budget on a busy host.
+# Endpoints that scan large keyspaces need more than the default budget on a
+# busy Redis instance.
 DEFAULT_TIMEOUT = 15
 SLOW_TIMEOUT = 60
-# `docker system df` can run for a while on image-heavy hosts; allow slightly
-# more than the backend's own disk-usage budget so a first (uncached) load
-# completes instead of the UI timing out while the daemon is still walking.
-DISK_USAGE_TIMEOUT = 125
 
 
 # ---------------------------------------------------------------------------
@@ -53,26 +49,10 @@ def get_config() -> dict:
         except (KeyError, AttributeError, FileNotFoundError):
             return os.environ.get(key, default)
 
-    # Cosmetic only: the backend does the actual scoping. Mirror the same
-    # SCOPE_LABEL / COMPOSE_PROJECT / COMPOSE_PROJECTS / COMPOSE_PROJECT_PREFIX
-    # values here to label the scoped views. Build a human-readable scope string.
-    _label = (_secret("SCOPE_LABEL", "") or "").strip()
-    _prefix = (_secret("COMPOSE_PROJECT_PREFIX", "") or "").strip()
-    _names = [n.strip() for n in (_secret("COMPOSE_PROJECTS", "") or "").split(",") if n.strip()]
-    _single = (_secret("COMPOSE_PROJECT", "") or "").strip()
-    if _single and _single not in _names:
-        _names.append(_single)
-    if _label:
-        _scope_parts = [f"label {_label}"]
-    else:
-        _scope_parts = ([f"{_prefix}*"] if _prefix else []) + _names
-
     return {
         "base_url": (_secret("MYENGINE_URL", "http://localhost:8000")).rstrip("/"),
         "api_key": _secret("MYENGINE_API_KEY") or None,
         "refresh_interval": int(_secret("REFRESH_INTERVAL", 10)),
-        "compose_project": _single,
-        "compose_scope": ", ".join(_scope_parts),
         # Name shown for the overview page (nav item + header). Set per
         # deployment so a project-scoped instance reads as that project.
         "dashboard_title": (
@@ -250,130 +230,6 @@ class EngineClient:
 
     def get_redis_health(self) -> dict | None:
         return self._get("/redis/health")
-
-    # ------------------------------------------------------------------
-    # Containers
-    # ------------------------------------------------------------------
-
-    def get_containers(self, all: bool = True) -> list | None:
-        data = self._get("/containers", params={"running_only": str(not all).lower()})
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("containers", [])
-        return None
-
-    def get_container(self, id: str) -> dict | None:
-        return self._get(f"/containers/{id}")
-
-    def get_container_stats(self, id: str) -> dict | None:
-        return self._get(f"/containers/{id}/stats")
-
-    def get_all_container_stats(self) -> dict | None:
-        """Returns {"containers": [...], "count": N, "errors": [...]}."""
-        data = self._get("/containers/stats/all", timeout=SLOW_TIMEOUT)
-        if isinstance(data, dict):
-            return data
-        if isinstance(data, list):
-            return {"containers": data, "count": len(data), "errors": []}
-        return None
-
-    def get_container_groups(self) -> list | None:
-        """Returns a list of Compose projects with their services."""
-        data = self._get("/containers/groups", timeout=SLOW_TIMEOUT)
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("projects", [])
-        return None
-
-    def container_action(self, id: str, action: str) -> dict | None:
-        """action: start | stop | restart | pause | unpause"""
-        return self._post(f"/containers/{id}/{action}", timeout=SLOW_TIMEOUT)
-
-    def remove_container(self, id: str, force: bool = False) -> dict | None:
-        params = {"force": "true"} if force else {}
-        return self._delete(f"/containers/{id}", params=params)
-
-    # ------------------------------------------------------------------
-    # Images
-    # ------------------------------------------------------------------
-
-    def get_images(self) -> list | None:
-        data = self._get("/images", timeout=SLOW_TIMEOUT)
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("images", [])
-        return None
-
-    def get_image(self, id: str) -> dict | None:
-        return self._get(f"/images/{id}")
-
-    def pull_image(self, name: str) -> dict | None:
-        return self._post("/images/pull", json={"repository": name}, timeout=SLOW_TIMEOUT)
-
-    def remove_image(self, id: str, force: bool = False) -> dict | None:
-        params = {"force": "true"} if force else {}
-        return self._delete(f"/images/{id}", params=params)
-
-    # ------------------------------------------------------------------
-    # Networks
-    # ------------------------------------------------------------------
-
-    def get_networks(self) -> list | None:
-        data = self._get("/networks")
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("networks", [])
-        return None
-
-    def get_network(self, id: str) -> dict | None:
-        return self._get(f"/networks/{id}")
-
-    def create_network(
-        self, name: str, driver: str = "bridge", internal: bool = False
-    ) -> dict | None:
-        return self._post("/networks", json={"name": name, "driver": driver, "internal": internal})
-
-    def remove_network(self, id: str) -> dict | None:
-        return self._delete(f"/networks/{id}")
-
-    # ------------------------------------------------------------------
-    # Volumes
-    # ------------------------------------------------------------------
-
-    def get_volumes(self) -> list | None:
-        data = self._get("/volumes")
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("volumes", [])
-        return None
-
-    def get_volume(self, name: str) -> dict | None:
-        return self._get(f"/volumes/{name}")
-
-    def create_volume(self, name: str, driver: str = "local") -> dict | None:
-        return self._post("/volumes", json={"name": name, "driver": driver})
-
-    def remove_volume(self, name: str) -> dict | None:
-        return self._delete(f"/volumes/{name}")
-
-    # ------------------------------------------------------------------
-    # System
-    # ------------------------------------------------------------------
-
-    def get_system_info(self) -> dict | None:
-        return self._get("/system/info")
-
-    def get_disk_usage(self, refresh: bool = False) -> dict | None:
-        return self._get(
-            "/system/df",
-            params={"refresh": str(refresh).lower()},
-            timeout=DISK_USAGE_TIMEOUT,
-        )
 
     # ------------------------------------------------------------------
     # Redis — Keys
@@ -654,96 +510,3 @@ class EngineClient:
             f"/redis/queues/{_key_path(key)}",
             params={"sample_count": sample_count},
         )
-
-    # ------------------------------------------------------------------
-    # Logs
-    # ------------------------------------------------------------------
-
-    def get_all_logs(
-        self,
-        tail: int = 100,
-        timestamps: bool = True,
-        running_only: bool = True,
-    ) -> dict | None:
-        return self._get("/logs", params={
-            "tail": tail,
-            "timestamps": str(timestamps).lower(),
-            "running_only": str(running_only).lower(),
-        }, timeout=SLOW_TIMEOUT)
-
-    def get_container_logs(
-        self,
-        container_id: str,
-        tail: int = 2000,
-        timestamps: bool = False,
-        since: str | None = None,
-        until: str | None = None,
-    ) -> dict | None:
-        params: dict = {"tail": tail, "timestamps": str(timestamps).lower()}
-        if since:
-            params["since"] = since
-        if until:
-            params["until"] = until
-        return self._get(f"/containers/{container_id}/logs", params=params, timeout=SLOW_TIMEOUT)
-
-    def search_container_logs(
-        self,
-        container_id: str,
-        pattern: str,
-        tail: int = 2000,
-        max_results: int = 200,
-        case_insensitive: bool = False,
-        timestamps: bool = False,
-    ) -> dict | None:
-        return self._get(f"/containers/{container_id}/logs/search", params={
-            "pattern": pattern,
-            "tail": tail,
-            "max_results": max_results,
-            "case_insensitive": str(case_insensitive).lower(),
-            "timestamps": str(timestamps).lower(),
-        }, timeout=SLOW_TIMEOUT)
-
-    def global_search_logs(
-        self,
-        pattern: str,
-        tail: int = 2000,
-        max_results_per_container: int = 200,
-        case_insensitive: bool = False,
-        running_only: bool = True,
-        timestamps: bool = False,
-    ) -> dict | None:
-        return self._get("/logs/search", params={
-            "pattern": pattern,
-            "tail": tail,
-            "max_results_per_container": max_results_per_container,
-            "case_insensitive": str(case_insensitive).lower(),
-            "running_only": str(running_only).lower(),
-            "timestamps": str(timestamps).lower(),
-        }, timeout=SLOW_TIMEOUT)
-
-    def get_logs_context(
-        self,
-        container_id: str,
-        pivot: str,
-        window_seconds: int = 60,
-        timestamps: bool = False,
-    ) -> dict | None:
-        return self._get(f"/containers/{container_id}/logs/context", params={
-            "pivot": pivot,
-            "window_seconds": window_seconds,
-            "timestamps": str(timestamps).lower(),
-        }, timeout=SLOW_TIMEOUT)
-
-    def global_logs_context(
-        self,
-        pivot: str,
-        window_seconds: int = 60,
-        running_only: bool = True,
-        timestamps: bool = False,
-    ) -> dict | None:
-        return self._get("/logs/context", params={
-            "pivot": pivot,
-            "window_seconds": window_seconds,
-            "running_only": str(running_only).lower(),
-            "timestamps": str(timestamps).lower(),
-        }, timeout=SLOW_TIMEOUT)

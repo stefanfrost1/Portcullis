@@ -1,19 +1,18 @@
 """
 Environment overview — single-call snapshot for monitoring dashboards.
 
-  GET  /overview    — Docker + Redis high-level stats in one response
+  GET  /overview    — Redis high-level stats + top queue depths in one response
+  GET  /health      — Service health check (can the service reach Redis?)
 
-Partial-failure design: if one subsystem is unreachable the other's data is
-still returned. HTTP 200 is always returned; check the `error` field in each
-sub-section to detect individual failures.
+HTTP 200 is always returned from /overview; check the `status` field in the
+`redis` section to detect failures.
 """
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from src.models.schemas import APIResponse
-from src.services import docker_service as ds
 from src.services import redis_service as rs
 
 router = APIRouter(tags=["Overview"])
@@ -21,17 +20,14 @@ router = APIRouter(tags=["Overview"])
 
 @router.get(
     "/overview",
-    summary="Full environment snapshot — Docker + Redis in one call",
+    summary="Environment snapshot — Redis stats and top queues in one call",
     description=(
-        "Returns a combined high-level snapshot of the Docker environment and Redis "
-        "instance without requiring multiple round-trips from the UI.\n\n"
-        "**Docker section** includes: running / stopped / paused container counts, "
-        "total images, volumes, Compose project count, and disk usage.\n\n"
+        "Returns a high-level snapshot of the Redis instance without requiring "
+        "multiple round-trips from the UI.\n\n"
         "**Redis section** includes: connected clients, used memory, keyspace key count, "
         "ops/sec, hit rate, and top queue depths (up to `queue_max_keys` scanned).\n\n"
-        "If a subsystem is unavailable the corresponding section contains "
-        "`{\"status\": \"error\", \"detail\": \"...\"}` while the other section is "
-        "still populated. HTTP status is always **200**."
+        "If Redis is unavailable the section contains "
+        "`{\"status\": \"error\", \"detail\": \"...\"}`. HTTP status is always **200**."
     ),
     response_model=APIResponse,
 )
@@ -40,13 +36,7 @@ def overview(
     queue_pattern: str = Query("*", description="Key pattern for queue scan"),
     queue_max_keys: int = Query(200, ge=1, le=2000, description="Max keys to scan for queue depth"),
 ):
-    docker_data: dict
     redis_data: dict
-
-    try:
-        docker_data = ds.get_docker_overview()
-    except Exception as exc:
-        docker_data = {"status": "error", "detail": str(exc)}
 
     try:
         redis_overview = rs.get_redis_overview(db=redis_db)
@@ -62,6 +52,22 @@ def overview(
 
     return APIResponse(data={
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "docker": docker_data,
         "redis": redis_data,
     })
+
+
+@router.get(
+    "/health",
+    summary="Health check",
+    description="Returns 200 if the service can connect to Redis, 503 otherwise.",
+    response_model=APIResponse,
+)
+def health():
+    try:
+        rs.get_client().ping()
+        return APIResponse(data={"status": "ok"})
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unhealthy", "detail": str(exc)},
+        )

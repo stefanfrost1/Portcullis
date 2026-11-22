@@ -33,11 +33,6 @@ services:
       - MYENGINE_API_KEY=${API_KEY:-}
       - REFRESH_INTERVAL=${REFRESH_INTERVAL:-10}
       # - DASHBOARD_TITLE=My Project    # renames the overview page (default "Dashboard")
-      # Cosmetic caption only — mirror whichever scope var the backend uses:
-      # - SCOPE_LABEL=com.acme.stack=dev
-      # - COMPOSE_PROJECT=myproject
-      # - COMPOSE_PROJECTS=dev-web,dev-db
-      # - COMPOSE_PROJECT_PREFIX=dev-
     depends_on:
       - portcullis
     networks:
@@ -51,13 +46,9 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: portcullis
-    # Needed for Docker socket access inside container on Windows/WSL hosts.
-    user: "0:0"
     restart: unless-stopped
     ports:
       - "8001:8000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
@@ -66,11 +57,6 @@ services:
       # - REDIS_DB=0                   # default database index (0-15)
       # - API_KEY_ENABLED=true         # uncomment to require X-API-Key header
       # - API_KEY=change-me-to-a-strong-secret
-      # Scope operational views (empty = host-wide). Pick one approach:
-      # - SCOPE_LABEL=com.acme.stack=dev     # a custom label you add to services (cleanest)
-      # - COMPOSE_PROJECT=myproject          # a single exact Compose project
-      # - COMPOSE_PROJECTS=dev-web,dev-db    # a list of exact Compose projects (OR)
-      # - COMPOSE_PROJECT_PREFIX=dev-        # every Compose project starting with 'dev-'
     depends_on:
       - redis
     healthcheck:
