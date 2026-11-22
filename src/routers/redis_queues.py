@@ -3,15 +3,18 @@ Redis queue-depth monitoring endpoints.
 
   GET  /redis/queues          — scan for List + Stream keys; return depth sorted desc
   GET  /redis/queues/{key}    — deep-dive: List depth + sample, or Stream groups + pending
+  POST /redis/queues/{key}/reorder — 🔒 move all matching List entries to top/bottom
 
 Compatible with Redis 6.0+. Stream consumer-group `lag` field (Redis 7.0+) is returned
 as null when absent. PaaS instances that disable OBJECT/MEMORY commands still work.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from redis.exceptions import RedisError
 
+from src.models.redis_schemas import RedisQueueReorderRequest
 from src.models.schemas import APIResponse
+from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
 router = APIRouter(prefix="/redis/queues", tags=["Redis — Queues"])
@@ -65,5 +68,38 @@ def queue_detail(
 ):
     try:
         return APIResponse(data=rs.get_queue_detail(key=key, sample_count=sample_count, db=db))
+    except RedisError as exc:
+        raise _err(exc)
+
+
+@router.post(
+    "/{key:path}/reorder",
+    summary="🔒 Move every matching List entry to the top or bottom of the queue",
+    description=(
+        "Moves all entries of List `key` matching `term` to the **top** (head, index 0) "
+        "or **bottom** (tail), keeping relative order inside both groups. `term` is a "
+        "case-insensitive substring, or a whole-value glob if it contains `*` or `?`.\n\n"
+        "To avoid reordering a moving target, the list is renamed to an unused temp key, "
+        "reordered there, and renamed back. Entries pushed to `key` during the move are "
+        "merged atomically to the `new_entries_to` end (default `back`) — nothing is "
+        "overwritten. Consumers see an empty queue for the duration of the move."
+    ),
+    response_model=APIResponse,
+)
+def reorder_queue(
+    key: str,
+    body: RedisQueueReorderRequest,
+    db: int = Query(0, ge=0, le=15),
+    _: None = Depends(require_admin),
+):
+    try:
+        return APIResponse(data=rs.reorder_queue(
+            key=key, term=body.term, position=body.position,
+            new_entries_to=body.new_entries_to, db=db,
+        ))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'\""))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except RedisError as exc:
         raise _err(exc)

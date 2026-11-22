@@ -297,6 +297,45 @@ def _render_list_inspector(key: str, depth: int) -> None:
                 f"{len(matches)} match(es) in the first {min(int(window), depth):,} of "
                 f"{depth:,} entries."
             )
+            if admin:
+                mv_msg = st.session_state.pop(f"qi_mv_msg_{key}", None)
+                if mv_msg:
+                    st.success(mv_msg)
+                with st.expander("↕ Move all matches to the top or bottom", expanded=False):
+                    st.caption(
+                        "Applies to **every** matching entry in the whole queue, not just "
+                        "the scanned window. The queue is renamed to an unused temp key, "
+                        "reordered there, then renamed back, so nothing moves under us. "
+                        "Consumers see an empty queue for the moment it takes; entries "
+                        "pushed during the move are merged back in, not lost."
+                    )
+                    arrive = st.radio(
+                        "Entries pushed during the move go to",
+                        ["Back (producers RPUSH)", "Front (producers LPUSH)"],
+                        horizontal=True, key=f"qi_mv_arrive_{key}",
+                    )
+                    side = "front" if arrive.startswith("Front") else "back"
+                    mv_top, mv_bot = st.columns(2)
+                    for col, pos, label in (
+                        (mv_top, "top", "⏫ Move all to top"),
+                        (mv_bot, "bottom", "⏬ Move all to bottom"),
+                    ):
+                        if col.button(label, key=f"qi_mv_{pos}_{key}", use_container_width=True):
+                            res = c.reorder_redis_queue(key, term, position=pos, new_entries_to=side)
+                            if res is None:
+                                st.error(c.last_error() or "Could not reorder the queue.")
+                            else:
+                                msg = (
+                                    f"Moved {res.get('matched', 0):,} of {res.get('total', 0):,} "
+                                    f"entries to the {pos}."
+                                )
+                                if res.get("arrived_during_move"):
+                                    msg += (
+                                        f" {res['arrived_during_move']:,} entr(ies) pushed during "
+                                        f"the move were merged to the {res.get('new_entries_to')}."
+                                    )
+                                st.session_state[f"qi_mv_msg_{key}"] = msg
+                                st.rerun()
             if admin and matches:
                 confirm = st.checkbox(
                     f"Yes, delete all {len(matches)} matching entries", key=f"qi_delall_ok_{key}"

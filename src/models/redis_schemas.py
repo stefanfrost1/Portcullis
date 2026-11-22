@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -118,3 +118,13 @@ class RedisEvalRequest(BaseModel):
     script: str
     keys: list[str] = []
     args: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Queues
+# ---------------------------------------------------------------------------
+
+class RedisQueueReorderRequest(BaseModel):
+    term: str = Field(..., min_length=1, description="Text to match (contains), or a * / ? glob over the whole value; case-insensitive")
+    position: Literal["top", "bottom"] = "top"   # top = head (index 0), bottom = tail
+    new_entries_to: Literal["back", "front"] = "back"   # where entries pushed during the move are merged
