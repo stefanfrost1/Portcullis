@@ -203,14 +203,16 @@ All REST responses use this JSON shape:
 { "data": { ... }, "error": null }
 ```
 
-Error response:
+Error response (every 4xx/5xx, including unknown routes and validation errors):
 
 ```json
 {
   "data": null,
-  "error": { "code": "NOT_FOUND", "message": "Resource not found" }
+  "error": { "code": "NOT_FOUND", "message": "Key 'foo' does not exist" }
 }
 ```
+
+`code` is derived from the HTTP status: `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `CONFLICT`, `VALIDATION_ERROR` (422), `INTERNAL_ERROR` (500), `SERVICE_UNAVAILABLE`. Validation errors also carry `details`: one `{loc, msg, type}` entry per invalid input. The spec documents this as `ErrorResponse` on every operation (`4XX`/`5XX`).
 
 Every route declares the shape of `data` via `response_model=api_response(Model)`, so the OpenAPI spec (`/api/v1/openapi.json`, snapshot in `docs/openapi.json`) fully describes each response.
 
@@ -302,7 +304,8 @@ Routers that perform mutations (write, delete, lifecycle actions) declare `requi
 
 ### Error handling
 
-- **Router level:** `RedisError` exceptions are caught in each router and raised as `HTTPException`.
+- **Router level:** `RedisError` exceptions are caught in each router and raised as `HTTPException`. Give `HTTPException` a string `detail` — it becomes `error.message`.
+- **Envelope handlers:** `http_exception_handler` (all `HTTPException`s, plus FastAPI's own 404/405) and `validation_exception_handler` (422) in `main.py` turn every error into `{"data": null, "error": {code, message}}`.
 - **Global fallback:** `unhandled_exception_handler` in `main.py` logs the full traceback internally and returns a generic `500` — stack traces are never exposed to clients.
 
 ### WebSocket / streaming endpoints

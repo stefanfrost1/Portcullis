@@ -1,7 +1,23 @@
-from typing import Annotated, Any, ClassVar, Generic, Optional, TypeVar, Union, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    ClassVar,
+    Generic,
+    Optional,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+)
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, WithJsonSchema, model_serializer
-
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    WithJsonSchema,
+    model_serializer,
+)
 
 # ---------------------------------------------------------------------------
 # Shared field types for response models
@@ -89,6 +105,28 @@ class APIResponse(BaseModel, Generic[T]):
 
     data: T
     error: Optional[dict] = None
+
+
+class ErrorDetail(BaseModel):
+    code: str = Field(
+        description=(
+            "Machine-readable code derived from the HTTP status: BAD_REQUEST, UNAUTHORIZED, "
+            "FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, CONFLICT, VALIDATION_ERROR, "
+            "INTERNAL_ERROR, SERVICE_UNAVAILABLE"
+        ),
+    )
+    message: str = Field(description="Human-readable explanation")
+    details: Optional[list[dict[str, Any]]] = Field(
+        None,
+        description="VALIDATION_ERROR only: one {loc, msg, type} entry per invalid input",
+    )
+
+
+class ErrorResponse(BaseModel):
+    """Body of every 4xx/5xx response."""
+
+    data: None = None
+    error: ErrorDetail
 
 
 _envelopes: dict[str, type[APIResponse]] = {}

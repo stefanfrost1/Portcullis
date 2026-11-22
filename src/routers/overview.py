@@ -71,7 +71,4 @@ def health():
         rs.get_client().ping()
         return APIResponse(data={"status": "ok"})
     except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "unhealthy", "detail": str(exc)},
-        )
+        raise HTTPException(status_code=503, detail=f"unhealthy: {exc}")
