@@ -73,6 +73,8 @@ def queue_detail(
 ):
     try:
         return APIResponse(data=rs.get_queue_detail(key=key, sample_count=sample_count, db=db))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'\""))
     except RedisError as exc:
         raise _err(exc)
 

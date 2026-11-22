@@ -6634,20 +6634,26 @@
             "type": "string",
             "title": "Event"
           },
+          "timestamp": {
+            "type": "integer",
+            "title": "Timestamp",
+            "description": "Unix seconds of the latest latency spike"
+          },
           "latest_ms": {
             "type": "integer",
             "title": "Latest Ms",
-            "description": "Currently the Unix timestamp (seconds) of the latest spike, not a duration"
+            "description": "Latency of the latest spike"
           },
           "max_ms": {
             "type": "integer",
             "title": "Max Ms",
-            "description": "Currently the latest spike's latency in ms, not the all-time max"
+            "description": "Highest latency recorded for this event"
           }
         },
         "type": "object",
         "required": [
           "event",
+          "timestamp",
           "latest_ms",
           "max_ms"
         ],
@@ -9248,26 +9254,24 @@
           "first-entry": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/StreamEntry"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "First-Entry",
-            "description": "Python repr of the (id, fields) tuple, e.g. \"('1700000000000-0', {'f': 'v'})\""
+            "description": "null when the stream is empty"
           },
           "last-entry": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/StreamEntry"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Last-Entry",
-            "description": "Same format as `first-entry`"
+            "description": "null when the stream is empty"
           },
           "max-deleted-entry-id": {
             "anyOf": [

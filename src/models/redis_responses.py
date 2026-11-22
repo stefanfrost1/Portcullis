@@ -263,11 +263,8 @@ class StreamInfo(ResponseModel):
     radix_tree_nodes: int = Field(alias="radix-tree-nodes")
     last_generated_id: str = Field(alias="last-generated-id")
     groups: int
-    first_entry: Optional[str] = Field(
-        alias="first-entry",
-        description="Python repr of the (id, fields) tuple, e.g. \"('1700000000000-0', {'f': 'v'})\"",
-    )
-    last_entry: Optional[str] = Field(alias="last-entry", description="Same format as `first-entry`")
+    first_entry: Optional[StreamEntry] = Field(alias="first-entry", description="null when the stream is empty")
+    last_entry: Optional[StreamEntry] = Field(alias="last-entry", description="null when the stream is empty")
     max_deleted_entry_id: Optional[str] = Field(None, alias="max-deleted-entry-id", description="Redis 7.0+")
     entries_added: Optional[int] = Field(None, alias="entries-added", description="Redis 7.0+")
     recorded_first_entry_id: Optional[str] = Field(None, alias="recorded-first-entry-id", description="Redis 7.0+")
@@ -511,10 +508,9 @@ class MallocStats(ResponseModel):
 
 class LatencyEvent(ResponseModel):
     event: str
-    latest_ms: int = Field(
-        description="Currently the Unix timestamp (seconds) of the latest spike, not a duration",
-    )
-    max_ms: int = Field(description="Currently the latest spike's latency in ms, not the all-time max")
+    timestamp: int = Field(description="Unix seconds of the latest latency spike")
+    latest_ms: int = Field(description="Latency of the latest spike")
+    max_ms: int = Field(description="Highest latency recorded for this event")
 
 
 class LatencySample(ResponseModel):

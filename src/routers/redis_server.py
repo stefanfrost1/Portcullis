@@ -222,7 +222,7 @@ def config_get(
 def config_set(body: RedisConfigSetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.set_config(body.parameter, body.value, db))
-    except ResponseError as exc:
+    except (ValueError, ResponseError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except RedisError as exc:
         raise _err(exc)
