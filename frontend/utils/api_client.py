@@ -510,3 +510,10 @@ class EngineClient:
             f"/redis/queues/{_key_path(key)}",
             params={"sample_count": sample_count},
         )
+
+    def reorder_redis_queue(self, key: str, term: str, position: str = "top") -> dict | None:
+        return self._post(
+            f"/redis/queues/{_key_path(key)}/reorder",
+            json={"term": term, "position": position},
+            timeout=SLOW_TIMEOUT,
+        )

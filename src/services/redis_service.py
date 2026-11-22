@@ -12,9 +12,11 @@ Connection is configured via environment variables:
 """
 
 import base64
+import fnmatch
 import logging
 import os
 import queue
+import secrets
 import threading
 import time
 from typing import Any, Generator, Optional
@@ -1469,4 +1471,136 @@ def get_queue_detail(key: str, sample_count: int = 10, db: int = 0) -> dict:
         "consumer_groups": consumer_groups,
         "pending_summary": pending_summary if pending_summary else None,
         "oldest_pending_age_seconds": oldest_pending_age_seconds,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Queue reorder — move every matching entry to the top or bottom of a list
+# ---------------------------------------------------------------------------
+
+_REORDER_CHUNK = 1000
+_REORDER_TMP_PREFIX = "__portcullis_reorder__"
+
+# Atomic restore: anything producers pushed to `key` while it was renamed away
+# is appended *after* the reordered content (the reordered queue stays first),
+# then the temp list is renamed back to `key`. Runs as one script so nothing
+# can slip in between the merge and the rename.
+#   KEYS[1] = key, KEYS[2] = tmp
+# Returns the number of entries that arrived during the move, or an error.
+_RESTORE_LUA = """
+local key, tmp = KEYS[1], KEYS[2]
+if redis.call('EXISTS', tmp) == 0 then
+  return redis.error_reply('temp key ' .. tmp .. ' vanished')
+end
+local arrived = 0
+if redis.call('EXISTS', key) == 1 then
+  if redis.call('TYPE', key).ok ~= 'list' then
+    return redis.error_reply('key was recreated as a non-list; reordered entries left in ' .. tmp)
+  end
+  local items = redis.call('LRANGE', key, 0, -1)
+  arrived = #items
+  local chunk = 1000
+  local i = 1
+  while i <= #items do
+    local last = math.min(i + chunk - 1, #items)
+    redis.call('RPUSH', tmp, unpack(items, i, last))
+    i = last + 1
+  end
+  redis.call('DEL', key)
+end
+redis.call('RENAME', tmp, key)
+return arrived
+"""
+
+
+def _reorder_matcher(term: str):
+    """Same rule as the UI search: plain text = case-insensitive contains;
+    a term with * or ? = case-insensitive whole-value glob."""
+    tl = term.lower()
+    if any(ch in term for ch in "*?"):
+        return lambda v: fnmatch.fnmatchcase(v.lower(), tl)
+    return lambda v: tl in v.lower()
+
+
+def reorder_queue(
+    key: str,
+    term: str,
+    position: str = "top",
+    db: int = 0,
+) -> dict:
+    """
+    Move every entry of list `key` that matches `term` to the top (head,
+    index 0) or bottom (tail) of the list, keeping relative order within
+    both the matched and unmatched groups.
+
+    To avoid reordering a moving target, the list is first renamed to an
+    unused temp key (RENAMENX), reordered there where no producer or consumer
+    can touch it, and then renamed back. The reordered content always stays
+    first; entries producers pushed to `key` in the meantime are appended
+    after it atomically by the restore script, so nothing is overwritten.
+    Consumers see an empty queue for the duration of the move.
+    """
+    r = get_bin_client(db)
+    ktype = r.type(key)
+    if ktype == b"none":
+        raise KeyError(f"Key '{key}' does not exist")
+    if ktype != b"list":
+        raise ValueError(f"Key '{key}' is type '{ktype.decode()}', not a list queue")
+
+    tmp = f"{_REORDER_TMP_PREFIX}:{key}:{secrets.token_hex(8)}"
+    try:
+        if not r.renamenx(key, tmp):
+            raise ValueError(f"Temp key '{tmp}' already exists — retry")
+    except ResponseError as exc:
+        # Key disappeared between TYPE and RENAMENX (drained, or another reorder).
+        raise KeyError(f"Key '{key}' no longer exists ({exc})")
+
+    matches_fn = _reorder_matcher(term)
+    matched = total = 0
+    try:
+        pttl = r.pttl(tmp)
+        items: list[bytes] = []
+        start = 0
+        while True:
+            batch = r.lrange(tmp, start, start + 10 * _REORDER_CHUNK - 1)
+            items.extend(batch)
+            if len(batch) < 10 * _REORDER_CHUNK:
+                break
+            start += len(batch)
+        total = len(items)
+
+        hit, rest = [], []
+        for raw in items:
+            (hit if matches_fn(raw.decode("utf-8", errors="replace")) else rest).append(raw)
+        matched = len(hit)
+        new_order = hit + rest if position == "top" else rest + hit
+
+        if matched and new_order != items:
+            # Rewrite the private temp list in one MULTI/EXEC so a failure
+            # mid-write cannot leave it half-populated.
+            pipe = r.pipeline(transaction=True)
+            pipe.delete(tmp)
+            for i in range(0, len(new_order), _REORDER_CHUNK):
+                pipe.rpush(tmp, *new_order[i:i + _REORDER_CHUNK])
+            if pttl and pttl > 0:
+                pipe.pexpire(tmp, pttl)
+            pipe.execute()
+    finally:
+        # Always try to put the queue back, even if the reorder step failed.
+        try:
+            arrived = r.eval(_RESTORE_LUA, 2, key, tmp)
+        except RedisError as exc:
+            raise RedisError(
+                f"Could not rename '{tmp}' back to '{key}': {exc}. "
+                f"The queue's entries are in '{tmp}'."
+            ) from exc
+
+    return {
+        "key": key,
+        "position": position,
+        "term": term,
+        "matched": matched,
+        "total": total,
+        "arrived_during_move": int(arrived or 0),
+        "temp_key": tmp,
     }

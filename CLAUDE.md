@@ -183,6 +183,7 @@ Read operations are open; write/destructive operations require 🔒 admin.
 |--------|------|-------------|
 | GET | `/redis/queues` | Scan for List + Stream keys; return depths sorted descending |
 | GET | `/redis/queues/{key}` | Deep-dive: List depth + sample, or Stream groups + pending |
+| POST | `/redis/queues/{key}/reorder` | 🔒 Move every List entry matching `term` to the top or bottom. Renames the queue to an unused temp key, reorders it there, then renames it back atomically; the reordered content stays first and entries pushed meanwhile are appended after it |
 
 ### Overview
 
