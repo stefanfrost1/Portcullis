@@ -1481,13 +1481,14 @@ def get_queue_detail(key: str, sample_count: int = 10, db: int = 0) -> dict:
 _REORDER_CHUNK = 1000
 _REORDER_TMP_PREFIX = "__portcullis_reorder__"
 
-# Atomic restore: merge anything producers pushed to `key` while it was renamed
-# away into the reordered temp list, then rename the temp list back to `key`.
-# Runs as one script so nothing can slip in between the merge and the rename.
-#   KEYS[1] = key, KEYS[2] = tmp, ARGV[1] = "back" | "front" (where new entries go)
+# Atomic restore: anything producers pushed to `key` while it was renamed away
+# is appended *after* the reordered content (the reordered queue stays first),
+# then the temp list is renamed back to `key`. Runs as one script so nothing
+# can slip in between the merge and the rename.
+#   KEYS[1] = key, KEYS[2] = tmp
 # Returns the number of entries that arrived during the move, or an error.
 _RESTORE_LUA = """
-local key, tmp, side = KEYS[1], KEYS[2], ARGV[1]
+local key, tmp = KEYS[1], KEYS[2]
 if redis.call('EXISTS', tmp) == 0 then
   return redis.error_reply('temp key ' .. tmp .. ' vanished')
 end
@@ -1499,26 +1500,11 @@ if redis.call('EXISTS', key) == 1 then
   local items = redis.call('LRANGE', key, 0, -1)
   arrived = #items
   local chunk = 1000
-  if side == 'front' then
-    -- Prepend preserving order: LPUSH the items last-to-first.
-    local i = #items
-    while i >= 1 do
-      local args = {}
-      local j = i
-      while j >= 1 and (i - j) < chunk do
-        args[#args + 1] = items[j]
-        j = j - 1
-      end
-      redis.call('LPUSH', tmp, unpack(args))
-      i = j
-    end
-  else
-    local i = 1
-    while i <= #items do
-      local last = math.min(i + chunk - 1, #items)
-      redis.call('RPUSH', tmp, unpack(items, i, last))
-      i = last + 1
-    end
+  local i = 1
+  while i <= #items do
+    local last = math.min(i + chunk - 1, #items)
+    redis.call('RPUSH', tmp, unpack(items, i, last))
+    i = last + 1
   end
   redis.call('DEL', key)
 end
@@ -1540,7 +1526,6 @@ def reorder_queue(
     key: str,
     term: str,
     position: str = "top",
-    new_entries_to: str = "back",
     db: int = 0,
 ) -> dict:
     """
@@ -1550,9 +1535,9 @@ def reorder_queue(
 
     To avoid reordering a moving target, the list is first renamed to an
     unused temp key (RENAMENX), reordered there where no producer or consumer
-    can touch it, and then renamed back. Entries producers pushed to `key`
-    in the meantime are merged in atomically (to the back or front, per
-    `new_entries_to`) by the restore script, so nothing is overwritten.
+    can touch it, and then renamed back. The reordered content always stays
+    first; entries producers pushed to `key` in the meantime are appended
+    after it atomically by the restore script, so nothing is overwritten.
     Consumers see an empty queue for the duration of the move.
     """
     r = get_bin_client(db)
@@ -1603,7 +1588,7 @@ def reorder_queue(
     finally:
         # Always try to put the queue back, even if the reorder step failed.
         try:
-            arrived = r.eval(_RESTORE_LUA, 2, key, tmp, new_entries_to)
+            arrived = r.eval(_RESTORE_LUA, 2, key, tmp)
         except RedisError as exc:
             raise RedisError(
                 f"Could not rename '{tmp}' back to '{key}': {exc}. "
@@ -1617,6 +1602,5 @@ def reorder_queue(
         "matched": matched,
         "total": total,
         "arrived_during_move": int(arrived or 0),
-        "new_entries_to": new_entries_to,
         "temp_key": tmp,
     }

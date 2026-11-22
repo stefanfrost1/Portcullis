@@ -80,8 +80,8 @@ def queue_detail(
         "or **bottom** (tail), keeping relative order inside both groups. `term` is a "
         "case-insensitive substring, or a whole-value glob if it contains `*` or `?`.\n\n"
         "To avoid reordering a moving target, the list is renamed to an unused temp key, "
-        "reordered there, and renamed back. Entries pushed to `key` during the move are "
-        "merged atomically to the `new_entries_to` end (default `back`) — nothing is "
+        "reordered there, and renamed back. The reordered content stays first; entries "
+        "pushed to `key` during the move are appended after it atomically — nothing is "
         "overwritten. Consumers see an empty queue for the duration of the move."
     ),
     response_model=APIResponse,
@@ -94,8 +94,7 @@ def reorder_queue(
 ):
     try:
         return APIResponse(data=rs.reorder_queue(
-            key=key, term=body.term, position=body.position,
-            new_entries_to=body.new_entries_to, db=db,
+            key=key, term=body.term, position=body.position, db=db,
         ))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc).strip("'\""))

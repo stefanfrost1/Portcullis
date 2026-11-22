@@ -511,11 +511,9 @@ class EngineClient:
             params={"sample_count": sample_count},
         )
 
-    def reorder_redis_queue(
-        self, key: str, term: str, position: str = "top", new_entries_to: str = "back"
-    ) -> dict | None:
+    def reorder_redis_queue(self, key: str, term: str, position: str = "top") -> dict | None:
         return self._post(
             f"/redis/queues/{_key_path(key)}/reorder",
-            json={"term": term, "position": position, "new_entries_to": new_entries_to},
+            json={"term": term, "position": position},
             timeout=SLOW_TIMEOUT,
         )
