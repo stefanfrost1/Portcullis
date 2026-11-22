@@ -46,17 +46,43 @@ Redis server-management, monitoring, and analysis endpoints.
 
 import asyncio
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from redis.exceptions import RedisError, ResponseError
 
+from src.models.redis_responses import (
+    ActionResult,
+    ClientInfo,
+    ClientsKilled,
+    ConfigSetResult,
+    DatabaseInfo,
+    EvalResult,
+    ExpiringKey,
+    FlushDbResult,
+    KeyCount,
+    KeyMemory,
+    KeyspaceAnalysis,
+    LatencyEvent,
+    LatencySample,
+    MallocStats,
+    MemoryStats,
+    Performance,
+    PubSubChannels,
+    PubSubNumPat,
+    PublishResult,
+    RedisHealth,
+    RedisSummary,
+    Replication,
+    SlowlogEntry,
+    SlowlogLength,
+)
 from src.models.redis_schemas import (
     RedisConfigSetRequest,
     RedisEvalRequest,
     RedisPublishRequest,
 )
-from src.models.schemas import APIResponse
+from src.models.schemas import APIResponse, api_response
 from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
@@ -86,7 +112,7 @@ def _err(exc: Exception) -> HTTPException:
         "(server, clients, memory, persistence, stats, replication, cpu, "
         "commandstats, errorstats, latencystats, cluster, keyspace, all, everything)."
     ),
-    response_model=APIResponse,
+    response_model=api_response(dict[str, Any], "RedisInfo"),
 )
 def redis_info(
     section: Optional[str] = Query(None, description="INFO section name"),
@@ -102,7 +128,7 @@ def redis_info(
     "/databases",
     summary="List databases with key counts",
     description="Parses INFO keyspace and returns per-db key/expire counts.",
-    response_model=APIResponse,
+    response_model=api_response(list[DatabaseInfo]),
 )
 def databases(db: int = Query(0, ge=0, le=15)):
     try:
@@ -111,7 +137,7 @@ def databases(db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.get("/dbsize", summary="DBSIZE — number of keys in the selected database", response_model=APIResponse)
+@router.get("/dbsize", summary="DBSIZE — number of keys in the selected database", response_model=api_response(KeyCount))
 def dbsize(db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data={"count": rs.count_keys(db), "db": db})
@@ -131,7 +157,7 @@ def dbsize(db: int = Query(0, ge=0, le=15)):
         "PaaS-safe: fields that require restricted commands are omitted gracefully. "
         "`lag` in replication replica info is `null` on Redis < 7.0."
     ),
-    response_model=APIResponse,
+    response_model=api_response(RedisSummary),
 )
 def redis_summary(db: int = Query(0, ge=0, le=15)):
     try:
@@ -148,7 +174,7 @@ def redis_summary(db: int = Query(0, ge=0, le=15)):
         "Includes replica list with `offset` and `lag` (null on Redis < 7.0). "
         "Works on standalone, replica, and sentinel-managed instances."
     ),
-    response_model=APIResponse,
+    response_model=api_response(Replication),
 )
 def redis_replication(db: int = Query(0, ge=0, le=15)):
     try:
@@ -164,7 +190,7 @@ def redis_replication(db: int = Query(0, ge=0, le=15)):
         "Derived from `INFO all`: instantaneous ops/sec, keyspace hit/miss rates, "
         "evicted and expired key counts, and network I/O bytes/sec."
     ),
-    response_model=APIResponse,
+    response_model=api_response(Performance),
 )
 def redis_performance(db: int = Query(0, ge=0, le=15)):
     try:
@@ -180,7 +206,7 @@ def redis_performance(db: int = Query(0, ge=0, le=15)):
 @router.get(
     "/config",
     summary="CONFIG GET — get configuration parameters",
-    response_model=APIResponse,
+    response_model=api_response(dict[str, str], "RedisConfig"),
 )
 def config_get(
     pattern: str = Query("*", description="Parameter glob pattern"),
@@ -192,11 +218,11 @@ def config_get(
         raise _err(exc)
 
 
-@router.post("/config", summary="CONFIG SET — update a configuration parameter", response_model=APIResponse)
+@router.post("/config", summary="CONFIG SET — update a configuration parameter", response_model=api_response(ConfigSetResult))
 def config_set(body: RedisConfigSetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.set_config(body.parameter, body.value, db))
-    except ResponseError as exc:
+    except (ValueError, ResponseError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except RedisError as exc:
         raise _err(exc)
@@ -205,7 +231,7 @@ def config_set(body: RedisConfigSetRequest, db: int = Query(0, ge=0, le=15), _: 
 @router.post(
     "/config/rewrite",
     summary="CONFIG REWRITE — persist config changes to redis.conf",
-    response_model=APIResponse,
+    response_model=api_response(ActionResult),
 )
 def config_rewrite(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -217,7 +243,7 @@ def config_rewrite(db: int = Query(0, ge=0, le=15), _: None = Depends(require_ad
 @router.post(
     "/config/resetstat",
     summary="CONFIG RESETSTAT — reset stats counters",
-    response_model=APIResponse,
+    response_model=api_response(ActionResult),
 )
 def config_resetstat(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -230,7 +256,7 @@ def config_resetstat(db: int = Query(0, ge=0, le=15), _: None = Depends(require_
 # Persistence
 # ===========================================================================
 
-@router.post("/bgsave", summary="BGSAVE — trigger background RDB snapshot", response_model=APIResponse)
+@router.post("/bgsave", summary="BGSAVE — trigger background RDB snapshot", response_model=api_response(ActionResult))
 def bgsave(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.bgsave(db))
@@ -238,7 +264,7 @@ def bgsave(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
         raise _err(exc)
 
 
-@router.post("/bgrewriteaof", summary="BGREWRITEAOF — trigger background AOF rewrite", response_model=APIResponse)
+@router.post("/bgrewriteaof", summary="BGREWRITEAOF — trigger background AOF rewrite", response_model=api_response(ActionResult))
 def bgrewriteaof(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.bgrewriteaof(db))
@@ -254,7 +280,7 @@ def bgrewriteaof(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admi
     "/flushdb",
     summary="FLUSHDB — delete all keys in the selected database",
     description="**Destructive.** Requires `?confirm=true`.",
-    response_model=APIResponse,
+    response_model=api_response(FlushDbResult),
 )
 def flushdb(
     confirm: bool = Query(False, description="Must be true to proceed"),
@@ -277,7 +303,7 @@ def flushdb(
     "/flushall",
     summary="FLUSHALL — delete all keys in ALL databases",
     description="**Destructive.** Requires `?confirm=true`.",
-    response_model=APIResponse,
+    response_model=api_response(ActionResult),
 )
 def flushall(
     confirm: bool = Query(False, description="Must be true to proceed"),
@@ -300,7 +326,7 @@ def flushall(
 # Clients
 # ===========================================================================
 
-@router.get("/clients", summary="CLIENT LIST — active client connections", response_model=APIResponse)
+@router.get("/clients", summary="CLIENT LIST — active client connections", response_model=api_response(list[ClientInfo]))
 def list_clients(db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.list_clients(db))
@@ -311,7 +337,7 @@ def list_clients(db: int = Query(0, ge=0, le=15)):
 @router.post(
     "/clients/kill",
     summary="CLIENT KILL — terminate a client connection",
-    response_model=APIResponse,
+    response_model=api_response(ClientsKilled),
 )
 def kill_client(
     addr: Optional[str] = Query(None, description="ip:port of the client"),
@@ -334,7 +360,7 @@ def kill_client(
 @router.get(
     "/slowlog",
     summary="SLOWLOG GET — recent slow commands",
-    response_model=APIResponse,
+    response_model=api_response(list[SlowlogEntry]),
 )
 def slowlog_get(
     count: int = Query(50, ge=1, le=1000),
@@ -346,7 +372,7 @@ def slowlog_get(
         raise _err(exc)
 
 
-@router.get("/slowlog/len", summary="SLOWLOG LEN — number of entries", response_model=APIResponse)
+@router.get("/slowlog/len", summary="SLOWLOG LEN — number of entries", response_model=api_response(SlowlogLength))
 def slowlog_len(db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data={"length": rs.slowlog_len(db)})
@@ -354,7 +380,7 @@ def slowlog_len(db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.post("/slowlog/reset", summary="SLOWLOG RESET — clear the slow log", response_model=APIResponse)
+@router.post("/slowlog/reset", summary="SLOWLOG RESET — clear the slow log", response_model=api_response(ActionResult))
 def slowlog_reset(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.slowlog_reset(db))
@@ -370,7 +396,7 @@ def slowlog_reset(db: int = Query(0, ge=0, le=15), _: None = Depends(require_adm
     "/memory/stats",
     summary="MEMORY STATS + MEMORY DOCTOR",
     description="Full memory breakdown and any Redis-detected memory issues.",
-    response_model=APIResponse,
+    response_model=api_response(MemoryStats),
 )
 def memory_stats(db: int = Query(0, ge=0, le=15)):
     try:
@@ -382,7 +408,7 @@ def memory_stats(db: int = Query(0, ge=0, le=15)):
 @router.get(
     "/memory/malloc-stats",
     summary="MEMORY MALLOC-STATS — allocator internals",
-    response_model=APIResponse,
+    response_model=api_response(MallocStats),
 )
 def memory_malloc_stats(db: int = Query(0, ge=0, le=15)):
     try:
@@ -395,7 +421,7 @@ def memory_malloc_stats(db: int = Query(0, ge=0, le=15)):
 # Latency
 # ===========================================================================
 
-@router.get("/latency/latest", summary="LATENCY LATEST — current latency per event", response_model=APIResponse)
+@router.get("/latency/latest", summary="LATENCY LATEST — current latency per event", response_model=api_response(list[LatencyEvent]))
 def latency_latest(db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.get_latency_latest(db))
@@ -406,7 +432,7 @@ def latency_latest(db: int = Query(0, ge=0, le=15)):
 @router.get(
     "/latency/history/{event}",
     summary="LATENCY HISTORY — time-series for one event",
-    response_model=APIResponse,
+    response_model=api_response(list[LatencySample]),
 )
 def latency_history(event: str, db: int = Query(0, ge=0, le=15)):
     try:
@@ -415,7 +441,7 @@ def latency_history(event: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.post("/latency/reset", summary="LATENCY RESET — clear latency samples", response_model=APIResponse)
+@router.post("/latency/reset", summary="LATENCY RESET — clear latency samples", response_model=api_response(ActionResult))
 def latency_reset(db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.latency_reset(db))
@@ -430,7 +456,7 @@ def latency_reset(db: int = Query(0, ge=0, le=15), _: None = Depends(require_adm
 @router.get(
     "/pubsub/channels",
     summary="PUBSUB CHANNELS — list active channels",
-    response_model=APIResponse,
+    response_model=api_response(PubSubChannels),
 )
 def pubsub_channels(
     pattern: str = Query("*"),
@@ -446,7 +472,7 @@ def pubsub_channels(
 @router.get(
     "/pubsub/numsub",
     summary="PUBSUB NUMSUB — subscriber count per channel",
-    response_model=APIResponse,
+    response_model=api_response(dict[str, int], "PubSubNumSub"),
 )
 def pubsub_numsub(
     channels: list[str] = Query(..., description="Channel names (repeat param)"),
@@ -458,7 +484,7 @@ def pubsub_numsub(
         raise _err(exc)
 
 
-@router.get("/pubsub/numpat", summary="PUBSUB NUMPAT — number of pattern subscriptions", response_model=APIResponse)
+@router.get("/pubsub/numpat", summary="PUBSUB NUMPAT — number of pattern subscriptions", response_model=api_response(PubSubNumPat))
 def pubsub_numpat(db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.pubsub_numpat(db))
@@ -469,7 +495,7 @@ def pubsub_numpat(db: int = Query(0, ge=0, le=15)):
 @router.post(
     "/pubsub/publish",
     summary="PUBLISH — send a message to a channel",
-    response_model=APIResponse,
+    response_model=api_response(PublishResult),
 )
 def publish(body: RedisPublishRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -626,7 +652,7 @@ async def monitor_ws(
         "key type distribution, top-50 colon-delimited prefixes by count, "
         "and TTL distribution (no expiry / <1h / 1-24h / >24h)."
     ),
-    response_model=APIResponse,
+    response_model=api_response(KeyspaceAnalysis),
 )
 def analysis_keyspace(
     pattern: str = Query("*"),
@@ -646,7 +672,7 @@ def analysis_keyspace(
         "Scans up to `sample_size` keys and returns the `top_n` heaviest "
         "by MEMORY USAGE. Useful for identifying large-object hotspots."
     ),
-    response_model=APIResponse,
+    response_model=api_response(list[KeyMemory]),
 )
 def analysis_memory_top(
     pattern: str = Query("*"),
@@ -667,7 +693,7 @@ def analysis_memory_top(
         "Scans up to `sample_size` keys and returns those whose TTL falls "
         "within `within_seconds`. Results sorted ascending by TTL."
     ),
-    response_model=APIResponse,
+    response_model=api_response(list[ExpiringKey]),
 )
 def analysis_expiring_soon(
     within_seconds: int = Query(3600, ge=1, description="TTL threshold in seconds"),
@@ -689,7 +715,7 @@ def analysis_expiring_soon(
     "/eval",
     summary="EVAL — execute a LUA script",
     description="Passes `keys` and `args` to the script. Returns raw Redis result.",
-    response_model=APIResponse,
+    response_model=api_response(EvalResult),
 )
 def eval_script(body: RedisEvalRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -708,7 +734,7 @@ def eval_script(body: RedisEvalRequest, db: int = Query(0, ge=0, le=15), _: None
 @router.get(
     "/health",
     summary="Redis connectivity check",
-    response_model=APIResponse,
+    response_model=api_response(RedisHealth),
 )
 def redis_health(db: int = Query(0, ge=0, le=15)):
     try:

@@ -554,8 +554,15 @@ def stream_delete_entry(key: str, entry_id: str, db: int = 0) -> dict:
 
 def stream_info(key: str, db: int = 0) -> dict:
     raw = get_client(db).xinfo_stream(key)
-    return {k: (str(v) if not isinstance(v, (str, int, float, bool, type(None), list, dict)) else v)
-            for k, v in raw.items()}
+    result = {}
+    for k, v in raw.items():
+        if k in ("first-entry", "last-entry"):
+            # redis-py returns (id, {fields}) tuples, or None for an empty stream
+            v = {"id": v[0], "fields": v[1]} if v and v[0] is not None else None
+        elif not isinstance(v, (str, int, float, bool, type(None), list, dict)):
+            v = str(v)
+        result[k] = v
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +682,7 @@ def kill_client(addr: Optional[str] = None, client_id: Optional[int] = None, db:
     if addr:
         kwargs["addr"] = addr
     if client_id:
-        kwargs["client_id"] = client_id
+        kwargs["_id"] = client_id
     killed = r.client_kill_filter(**kwargs)
     return {"killed": killed}
 
@@ -693,7 +700,7 @@ def get_slowlog(count: int = 50, db: int = 0) -> list[dict]:
             "start_time": e.get("start_time"),
             "duration_microseconds": e.get("duration"),
             "command": e.get("command", []),
-            "client_addr": e.get("client_addr", ""),
+            "client_addr": e.get("client_address", ""),   # redis-py's key name
             "client_name": e.get("client_name", ""),
         })
     return result
@@ -735,9 +742,15 @@ def get_memory_malloc_stats(db: int = 0) -> str:
 def get_latency_latest(db: int = 0) -> list[dict]:
     raw = get_client(db).latency_latest()
     result = []
+    # LATENCY LATEST rows are [event, timestamp, latest_ms, max_ms]
     for entry in raw or []:
-        if isinstance(entry, (list, tuple)) and len(entry) >= 3:
-            result.append({"event": entry[0], "latest_ms": entry[1], "max_ms": entry[2]})
+        if isinstance(entry, (list, tuple)) and len(entry) >= 4:
+            result.append({
+                "event": entry[0],
+                "timestamp": entry[1],
+                "latest_ms": entry[2],
+                "max_ms": entry[3],
+            })
         elif isinstance(entry, dict):
             result.append(entry)
     return result

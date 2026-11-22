@@ -32,6 +32,39 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from redis.exceptions import RedisError, ResponseError
 
+from src.models.redis_responses import (
+    HashAll,
+    HashFieldDeleted,
+    HashFieldNames,
+    HashFieldValue,
+    KeyCopyResult,
+    KeyCount,
+    KeyDetail,
+    KeyDump,
+    KeyExpireResult,
+    KeyMetadata,
+    KeyRenameResult,
+    KeyScanResult,
+    KeysDeleted,
+    KeyTTL,
+    ListLength,
+    ListPopResult,
+    ListRange,
+    ListRemoveResult,
+    ListSetResult,
+    MemberRemoved,
+    MembersAdded,
+    SetIsMember,
+    SetMembers,
+    SetRandomMembers,
+    StreamAddResult,
+    StreamEntryDeleted,
+    StreamInfo,
+    StreamRange,
+    ZSetMemberScore,
+    ZSetRange,
+    ZSetScoreRange,
+)
 from src.models.redis_schemas import (
     RedisBulkDeleteRequest,
     RedisCopyRequest,
@@ -46,7 +79,7 @@ from src.models.redis_schemas import (
     RedisStreamAddRequest,
     RedisZSetAddRequest,
 )
-from src.models.schemas import APIResponse
+from src.models.schemas import APIResponse, api_response
 from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
@@ -73,7 +106,7 @@ def _not_found(key: str) -> HTTPException:
         "until cursor is 0 (scan complete). Use `type` to filter by data type "
         "(requires Redis 6.0+). Each result includes key name, type, and TTL."
     ),
-    response_model=APIResponse,
+    response_model=api_response(KeyScanResult),
 )
 def scan_keys(
     cursor: int = Query(0, ge=0),
@@ -91,7 +124,7 @@ def scan_keys(
 @router.get(
     "/keys/count",
     summary="Count keys in database (DBSIZE)",
-    response_model=APIResponse,
+    response_model=api_response(KeyCount),
 )
 def count_keys(db: int = Query(0, ge=0, le=15)):
     try:
@@ -103,7 +136,7 @@ def count_keys(db: int = Query(0, ge=0, le=15)):
 @router.delete(
     "/keys",
     summary="Delete multiple keys (DEL)",
-    response_model=APIResponse,
+    response_model=api_response(KeysDeleted),
 )
 def bulk_delete(body: RedisBulkDeleteRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -123,7 +156,7 @@ def bulk_delete(body: RedisBulkDeleteRequest, db: int = Query(0, ge=0, le=15), _
         "Auto-detects type and returns value. Large strings are truncated at 1 MB. "
         "Collections support `offset` + `count` pagination."
     ),
-    response_model=APIResponse,
+    response_model=api_response(KeyDetail),
 )
 def get_key(
     key: str,
@@ -146,7 +179,7 @@ def get_key(
     "/keys/{key}",
     summary="Create or overwrite a key",
     description="Replaces the key entirely. Supports string, hash, list, set, zset.",
-    response_model=APIResponse,
+    response_model=api_response(KeyDetail),
 )
 def set_key(key: str, body: RedisKeySetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -160,7 +193,7 @@ def set_key(key: str, body: RedisKeySetRequest, db: int = Query(0, ge=0, le=15),
 @router.delete(
     "/keys/{key}",
     summary="Delete a key (DEL)",
-    response_model=APIResponse,
+    response_model=api_response(KeysDeleted),
 )
 def delete_key(key: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -178,7 +211,7 @@ def delete_key(key: str, db: int = Query(0, ge=0, le=15), _: None = Depends(requ
 # TTL / expiry management
 # ===========================================================================
 
-@router.get("/keys/{key}/ttl", summary="Get TTL and PTTL", response_model=APIResponse)
+@router.get("/keys/{key}/ttl", summary="Get TTL and PTTL", response_model=api_response(KeyTTL))
 def key_ttl(key: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.get_key_ttl(key, db))
@@ -189,7 +222,7 @@ def key_ttl(key: str, db: int = Query(0, ge=0, le=15)):
 @router.post(
     "/keys/{key}/expire",
     summary="Set TTL (EXPIRE). Pass ttl <= 0 to call PERSIST.",
-    response_model=APIResponse,
+    response_model=api_response(KeyExpireResult),
 )
 def key_expire(key: str, body: RedisExpireRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
@@ -198,7 +231,7 @@ def key_expire(key: str, body: RedisExpireRequest, db: int = Query(0, ge=0, le=1
         raise _err(exc)
 
 
-@router.post("/keys/{key}/persist", summary="Remove TTL (PERSIST)", response_model=APIResponse)
+@router.post("/keys/{key}/persist", summary="Remove TTL (PERSIST)", response_model=api_response(KeyExpireResult))
 def key_persist(key: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.persist_key(key, db))
@@ -213,7 +246,7 @@ def key_persist(key: str, db: int = Query(0, ge=0, le=15), _: None = Depends(req
 @router.get(
     "/keys/{key}/metadata",
     summary="Key metadata — type, encoding, refcount, idletime, memory",
-    response_model=APIResponse,
+    response_model=api_response(KeyMetadata),
 )
 def key_metadata(key: str, db: int = Query(0, ge=0, le=15)):
     try:
@@ -225,7 +258,7 @@ def key_metadata(key: str, db: int = Query(0, ge=0, le=15)):
 @router.get(
     "/keys/{key}/dump",
     summary="DUMP key (binary serialisation, base64-encoded)",
-    response_model=APIResponse,
+    response_model=api_response(KeyDump),
 )
 def key_dump(key: str, db: int = Query(0, ge=0, le=15)):
     try:
@@ -238,7 +271,7 @@ def key_dump(key: str, db: int = Query(0, ge=0, le=15)):
 # Key management — rename, copy
 # ===========================================================================
 
-@router.post("/keys/{key}/rename", summary="Rename key (RENAME / RENAMENX)", response_model=APIResponse)
+@router.post("/keys/{key}/rename", summary="Rename key (RENAME / RENAMENX)", response_model=api_response(KeyRenameResult))
 def key_rename(key: str, body: RedisRenameRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.rename_key(key, body.new_key, nx=body.nx, db=db))
@@ -248,7 +281,7 @@ def key_rename(key: str, body: RedisRenameRequest, db: int = Query(0, ge=0, le=1
         raise _err(exc)
 
 
-@router.post("/keys/{key}/copy", summary="Copy key (COPY)", response_model=APIResponse)
+@router.post("/keys/{key}/copy", summary="Copy key (COPY)", response_model=api_response(KeyCopyResult))
 def key_copy(key: str, body: RedisCopyRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.copy_key(
@@ -265,7 +298,7 @@ def key_copy(key: str, body: RedisCopyRequest, db: int = Query(0, ge=0, le=15), 
 # Hash
 # ===========================================================================
 
-@router.get("/keys/{key}/hash", summary="HGETALL", response_model=APIResponse)
+@router.get("/keys/{key}/hash", summary="HGETALL", response_model=api_response(HashAll))
 def hash_getall(key: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data={"key": key, "fields": rs.hash_get_all(key, db)})
@@ -273,7 +306,7 @@ def hash_getall(key: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.get("/keys/{key}/hash/fields", summary="HKEYS — list field names", response_model=APIResponse)
+@router.get("/keys/{key}/hash/fields", summary="HKEYS — list field names", response_model=api_response(HashFieldNames))
 def hash_fields(key: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data={"key": key, "fields": rs.hash_get_fields(key, db)})
@@ -281,7 +314,7 @@ def hash_fields(key: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.get("/keys/{key}/hash/{field}", summary="HGET field", response_model=APIResponse)
+@router.get("/keys/{key}/hash/{field}", summary="HGET field", response_model=api_response(HashFieldValue))
 def hash_get(key: str, field: str, db: int = Query(0, ge=0, le=15)):
     try:
         value = rs.hash_get_field(key, field, db)
@@ -294,7 +327,7 @@ def hash_get(key: str, field: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.post("/keys/{key}/hash/{field}", summary="HSET field", response_model=APIResponse)
+@router.post("/keys/{key}/hash/{field}", summary="HSET field", response_model=api_response(HashFieldValue))
 def hash_set(key: str, field: str, body: RedisHashFieldRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.hash_set_field(key, field, body.value, db))
@@ -302,7 +335,7 @@ def hash_set(key: str, field: str, body: RedisHashFieldRequest, db: int = Query(
         raise _err(exc)
 
 
-@router.delete("/keys/{key}/hash/{field}", summary="HDEL field", response_model=APIResponse)
+@router.delete("/keys/{key}/hash/{field}", summary="HDEL field", response_model=api_response(HashFieldDeleted))
 def hash_del(key: str, field: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.hash_del_field(key, field, db)
@@ -322,7 +355,7 @@ def hash_del(key: str, field: str, db: int = Query(0, ge=0, le=15), _: None = De
 @router.get(
     "/keys/{key}/list",
     summary="LRANGE — paginated list items",
-    response_model=APIResponse,
+    response_model=api_response(ListRange),
 )
 def list_get(
     key: str,
@@ -336,7 +369,7 @@ def list_get(
         raise _err(exc)
 
 
-@router.post("/keys/{key}/list/push", summary="LPUSH / RPUSH", response_model=APIResponse)
+@router.post("/keys/{key}/list/push", summary="LPUSH / RPUSH", response_model=api_response(ListLength))
 def list_push(key: str, body: RedisListPushRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.list_push(key, body.values, body.direction, db))
@@ -344,7 +377,7 @@ def list_push(key: str, body: RedisListPushRequest, db: int = Query(0, ge=0, le=
         raise _err(exc)
 
 
-@router.post("/keys/{key}/list/pop", summary="LPOP / RPOP", response_model=APIResponse)
+@router.post("/keys/{key}/list/pop", summary="LPOP / RPOP", response_model=api_response(ListPopResult))
 def list_pop(
     key: str,
     direction: str = Query("right", description="left | right"),
@@ -357,7 +390,7 @@ def list_pop(
         raise _err(exc)
 
 
-@router.post("/keys/{key}/list/remove", summary="LREM — remove by value", response_model=APIResponse)
+@router.post("/keys/{key}/list/remove", summary="LREM — remove by value", response_model=api_response(ListRemoveResult))
 def list_remove(key: str, body: RedisListRemoveRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.list_remove(key, body.value, body.count, db))
@@ -365,7 +398,7 @@ def list_remove(key: str, body: RedisListRemoveRequest, db: int = Query(0, ge=0,
         raise _err(exc)
 
 
-@router.put("/keys/{key}/list/{index}", summary="LSET — set item at index", response_model=APIResponse)
+@router.put("/keys/{key}/list/{index}", summary="LSET — set item at index", response_model=api_response(ListSetResult))
 def list_set(key: str, index: int, body: RedisListSetRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.list_set_index(key, index, body.value, db))
@@ -379,7 +412,7 @@ def list_set(key: str, index: int, body: RedisListSetRequest, db: int = Query(0,
 # Set
 # ===========================================================================
 
-@router.get("/keys/{key}/set", summary="SMEMBERS", response_model=APIResponse)
+@router.get("/keys/{key}/set", summary="SMEMBERS", response_model=api_response(SetMembers))
 def set_members(key: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data={"key": key, "members": rs.set_members(key, db)})
@@ -387,7 +420,7 @@ def set_members(key: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.get("/keys/{key}/set/random", summary="SRANDMEMBER", response_model=APIResponse)
+@router.get("/keys/{key}/set/random", summary="SRANDMEMBER", response_model=api_response(SetRandomMembers))
 def set_random(
     key: str,
     count: int = Query(1, ge=1),
@@ -399,7 +432,7 @@ def set_random(
         raise _err(exc)
 
 
-@router.post("/keys/{key}/set/add", summary="SADD", response_model=APIResponse)
+@router.post("/keys/{key}/set/add", summary="SADD", response_model=api_response(MembersAdded))
 def set_add(key: str, body: RedisSetAddRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.set_add(key, body.members, db))
@@ -407,7 +440,7 @@ def set_add(key: str, body: RedisSetAddRequest, db: int = Query(0, ge=0, le=15),
         raise _err(exc)
 
 
-@router.get("/keys/{key}/set/{member}/ismember", summary="SISMEMBER", response_model=APIResponse)
+@router.get("/keys/{key}/set/{member}/ismember", summary="SISMEMBER", response_model=api_response(SetIsMember))
 def set_ismember(key: str, member: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.set_is_member(key, member, db))
@@ -415,7 +448,7 @@ def set_ismember(key: str, member: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.delete("/keys/{key}/set/{member}", summary="SREM", response_model=APIResponse)
+@router.delete("/keys/{key}/set/{member}", summary="SREM", response_model=api_response(MemberRemoved))
 def set_remove(key: str, member: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.set_remove(key, member, db)
@@ -435,7 +468,7 @@ def set_remove(key: str, member: str, db: int = Query(0, ge=0, le=15), _: None =
 @router.get(
     "/keys/{key}/zset",
     summary="ZRANGE with scores (paginated)",
-    response_model=APIResponse,
+    response_model=api_response(ZSetRange),
 )
 def zset_range(
     key: str,
@@ -453,7 +486,7 @@ def zset_range(
 @router.get(
     "/keys/{key}/zset/range-by-score",
     summary="ZRANGEBYSCORE — filter by score range",
-    response_model=APIResponse,
+    response_model=api_response(ZSetScoreRange),
 )
 def zset_range_by_score(
     key: str,
@@ -469,7 +502,7 @@ def zset_range_by_score(
         raise _err(exc)
 
 
-@router.post("/keys/{key}/zset/add", summary="ZADD", response_model=APIResponse)
+@router.post("/keys/{key}/zset/add", summary="ZADD", response_model=api_response(MembersAdded))
 def zset_add(key: str, body: RedisZSetAddRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.zset_add(key, body.members, nx=body.nx, xx=body.xx, db=db))
@@ -477,7 +510,7 @@ def zset_add(key: str, body: RedisZSetAddRequest, db: int = Query(0, ge=0, le=15
         raise _err(exc)
 
 
-@router.get("/keys/{key}/zset/{member}/score", summary="ZSCORE + ZRANK + ZREVRANK", response_model=APIResponse)
+@router.get("/keys/{key}/zset/{member}/score", summary="ZSCORE + ZRANK + ZREVRANK", response_model=api_response(ZSetMemberScore))
 def zset_score(key: str, member: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.zset_score(key, member, db))
@@ -485,7 +518,7 @@ def zset_score(key: str, member: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.delete("/keys/{key}/zset/{member}", summary="ZREM", response_model=APIResponse)
+@router.delete("/keys/{key}/zset/{member}", summary="ZREM", response_model=api_response(MemberRemoved))
 def zset_remove(key: str, member: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         result = rs.zset_remove(key, member, db)
@@ -505,7 +538,7 @@ def zset_remove(key: str, member: str, db: int = Query(0, ge=0, le=15), _: None 
 @router.get(
     "/keys/{key}/stream",
     summary="XRANGE — paginated stream entries",
-    response_model=APIResponse,
+    response_model=api_response(StreamRange),
 )
 def stream_range(
     key: str,
@@ -520,7 +553,7 @@ def stream_range(
         raise _err(exc)
 
 
-@router.get("/keys/{key}/stream/info", summary="XINFO STREAM", response_model=APIResponse)
+@router.get("/keys/{key}/stream/info", summary="XINFO STREAM", response_model=api_response(StreamInfo))
 def stream_info(key: str, db: int = Query(0, ge=0, le=15)):
     try:
         return APIResponse(data=rs.stream_info(key, db))
@@ -528,7 +561,7 @@ def stream_info(key: str, db: int = Query(0, ge=0, le=15)):
         raise _err(exc)
 
 
-@router.post("/keys/{key}/stream/add", summary="XADD — append stream entry", response_model=APIResponse)
+@router.post("/keys/{key}/stream/add", summary="XADD — append stream entry", response_model=api_response(StreamAddResult))
 def stream_add(key: str, body: RedisStreamAddRequest, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.stream_add(key, body.fields, body.entry_id, db))
@@ -536,7 +569,7 @@ def stream_add(key: str, body: RedisStreamAddRequest, db: int = Query(0, ge=0, l
         raise _err(exc)
 
 
-@router.delete("/keys/{key}/stream/{entry_id}", summary="XDEL — remove stream entry", response_model=APIResponse)
+@router.delete("/keys/{key}/stream/{entry_id}", summary="XDEL — remove stream entry", response_model=api_response(StreamEntryDeleted))
 def stream_delete(key: str, entry_id: str, db: int = Query(0, ge=0, le=15), _: None = Depends(require_admin)):
     try:
         return APIResponse(data=rs.stream_delete_entry(key, entry_id, db))
