@@ -12,8 +12,13 @@ as null when absent. PaaS instances that disable OBJECT/MEMORY commands still wo
 from fastapi import APIRouter, Depends, HTTPException, Query
 from redis.exceptions import RedisError
 
+from src.models.redis_responses import (
+    QueueDetail,
+    QueueReorderResult,
+    QueueSummary,
+)
 from src.models.redis_schemas import RedisQueueReorderRequest
-from src.models.schemas import APIResponse
+from src.models.schemas import APIResponse, api_response
 from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
@@ -35,7 +40,7 @@ def _err(exc: Exception) -> HTTPException:
         "Uses SCAN + pipeline TYPE check (not SCAN TYPE filter) so it is compatible "
         "with Redis 6.0 and PaaS-managed instances."
     ),
-    response_model=APIResponse,
+    response_model=api_response(list[QueueSummary]),
 )
 def list_queues(
     pattern: str = Query("*", description="Key glob pattern to scan"),
@@ -59,7 +64,7 @@ def list_queues(
         "and the age (seconds) of the oldest unacknowledged message derived from the "
         "stream entry ID timestamp."
     ),
-    response_model=APIResponse,
+    response_model=api_response(QueueDetail),
 )
 def queue_detail(
     key: str,
@@ -84,7 +89,7 @@ def queue_detail(
         "pushed to `key` during the move are appended after it atomically — nothing is "
         "overwritten. Consumers see an empty queue for the duration of the move."
     ),
-    response_model=APIResponse,
+    response_model=api_response(QueueReorderResult),
 )
 def reorder_queue(
     key: str,

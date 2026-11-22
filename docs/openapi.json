@@ -87,7 +87,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyScanResultResponse"
                 }
               }
             }
@@ -156,7 +156,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeysDeletedResponse"
                 }
               }
             }
@@ -201,7 +201,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyCountResponse"
                 }
               }
             }
@@ -279,7 +279,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyDetailResponse"
                 }
               }
             }
@@ -358,7 +358,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyDetailResponse"
                 }
               }
             }
@@ -426,7 +426,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeysDeletedResponse"
                 }
               }
             }
@@ -480,7 +480,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyTTLResponse"
                 }
               }
             }
@@ -560,7 +560,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyExpireResultResponse"
                 }
               }
             }
@@ -630,7 +630,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyExpireResultResponse"
                 }
               }
             }
@@ -684,7 +684,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyMetadataResponse"
                 }
               }
             }
@@ -738,7 +738,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyDumpResponse"
                 }
               }
             }
@@ -818,7 +818,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyRenameResultResponse"
                 }
               }
             }
@@ -898,7 +898,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyCopyResultResponse"
                 }
               }
             }
@@ -952,7 +952,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/HashAllResponse"
                 }
               }
             }
@@ -1006,7 +1006,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/HashFieldNamesResponse"
                 }
               }
             }
@@ -1069,7 +1069,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/HashFieldValueResponse"
                 }
               }
             }
@@ -1156,7 +1156,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/HashFieldValueResponse"
                 }
               }
             }
@@ -1233,7 +1233,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/HashFieldDeletedResponse"
                 }
               }
             }
@@ -1309,7 +1309,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ListRangeResponse"
                 }
               }
             }
@@ -1389,7 +1389,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ListLengthResponse"
                 }
               }
             }
@@ -1471,7 +1471,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ListPopResultResponse"
                 }
               }
             }
@@ -1551,7 +1551,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ListRemoveResultResponse"
                 }
               }
             }
@@ -1640,7 +1640,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ListSetResultResponse"
                 }
               }
             }
@@ -1694,7 +1694,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/SetMembersResponse"
                 }
               }
             }
@@ -1759,7 +1759,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/SetRandomMembersResponse"
                 }
               }
             }
@@ -1839,7 +1839,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/MembersAddedResponse"
                 }
               }
             }
@@ -1902,7 +1902,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/SetIsMemberResponse"
                 }
               }
             }
@@ -1981,7 +1981,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/MemberRemovedResponse"
                 }
               }
             }
@@ -2067,7 +2067,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ZSetRangeResponse"
                 }
               }
             }
@@ -2164,7 +2164,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ZSetScoreRangeResponse"
                 }
               }
             }
@@ -2244,7 +2244,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/MembersAddedResponse"
                 }
               }
             }
@@ -2307,7 +2307,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ZSetMemberScoreResponse"
                 }
               }
             }
@@ -2386,7 +2386,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/MemberRemovedResponse"
                 }
               }
             }
@@ -2476,7 +2476,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/StreamRangeResponse"
                 }
               }
             }
@@ -2530,7 +2530,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/StreamInfoResponse"
                 }
               }
             }
@@ -2610,7 +2610,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/StreamAddResultResponse"
                 }
               }
             }
@@ -2689,7 +2689,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/StreamEntryDeletedResponse"
                 }
               }
             }
@@ -2753,7 +2753,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/RedisInfoResponse"
                 }
               }
             }
@@ -2799,7 +2799,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/DatabaseInfoListResponse"
                 }
               }
             }
@@ -2844,7 +2844,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyCountResponse"
                 }
               }
             }
@@ -2890,7 +2890,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/RedisSummaryResponse"
                 }
               }
             }
@@ -2936,7 +2936,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ReplicationResponse"
                 }
               }
             }
@@ -2982,7 +2982,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/PerformanceResponse"
                 }
               }
             }
@@ -3039,7 +3039,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/RedisConfigResponse"
                 }
               }
             }
@@ -3108,7 +3108,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ConfigSetResultResponse"
                 }
               }
             }
@@ -3169,7 +3169,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -3230,7 +3230,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -3291,7 +3291,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -3352,7 +3352,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -3438,7 +3438,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/FlushDbResultResponse"
                 }
               }
             }
@@ -3522,7 +3522,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -3567,7 +3567,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ClientInfoListResponse"
                 }
               }
             }
@@ -3664,7 +3664,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ClientsKilledResponse"
                 }
               }
             }
@@ -3721,7 +3721,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/SlowlogEntryListResponse"
                 }
               }
             }
@@ -3766,7 +3766,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/SlowlogLengthResponse"
                 }
               }
             }
@@ -3827,7 +3827,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -3873,7 +3873,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/MemoryStatsResponse"
                 }
               }
             }
@@ -3918,7 +3918,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/MallocStatsResponse"
                 }
               }
             }
@@ -3963,7 +3963,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/LatencyEventListResponse"
                 }
               }
             }
@@ -4017,7 +4017,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/LatencySampleListResponse"
                 }
               }
             }
@@ -4078,7 +4078,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ActionResultResponse"
                 }
               }
             }
@@ -4133,7 +4133,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/PubSubChannelsResponse"
                 }
               }
             }
@@ -4192,7 +4192,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/PubSubNumSubResponse"
                 }
               }
             }
@@ -4237,7 +4237,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/PubSubNumPatResponse"
                 }
               }
             }
@@ -4308,7 +4308,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/PublishResultResponse"
                 }
               }
             }
@@ -4376,7 +4376,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyspaceAnalysisResponse"
                 }
               }
             }
@@ -4456,7 +4456,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/KeyMemoryListResponse"
                 }
               }
             }
@@ -4537,7 +4537,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/ExpiringKeyListResponse"
                 }
               }
             }
@@ -4609,7 +4609,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/EvalResultResponse"
                 }
               }
             }
@@ -4654,7 +4654,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/RedisHealthResponse"
                 }
               }
             }
@@ -4726,7 +4726,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/QueueSummaryListResponse"
                 }
               }
             }
@@ -4795,7 +4795,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/QueueDetailResponse"
                 }
               }
             }
@@ -4876,7 +4876,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/QueueReorderResultResponse"
                 }
               }
             }
@@ -4950,7 +4950,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/OverviewResponse"
                 }
               }
             }
@@ -4982,7 +4982,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse"
+                  "$ref": "#/components/schemas/HealthStatusResponse"
                 }
               }
             }
@@ -4993,9 +4993,288 @@
   },
   "components": {
     "schemas": {
-      "APIResponse": {
+      "ActionResult": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "Name of the action that ran, e.g. `bgsave`"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ActionResult"
+      },
+      "ActionResultResponse": {
         "properties": {
           "data": {
+            "$ref": "#/components/schemas/ActionResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ActionResultResponse"
+      },
+      "ClientInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "addr": {
+            "type": "string",
+            "title": "Addr"
+          },
+          "fd": {
+            "type": "string",
+            "title": "Fd"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "age": {
+            "type": "string",
+            "title": "Age",
+            "description": "Connection age in seconds"
+          },
+          "idle": {
+            "type": "string",
+            "title": "Idle",
+            "description": "Idle time in seconds"
+          },
+          "flags": {
+            "type": "string",
+            "title": "Flags"
+          },
+          "db": {
+            "type": "string",
+            "title": "Db"
+          },
+          "sub": {
+            "type": "string",
+            "title": "Sub"
+          },
+          "psub": {
+            "type": "string",
+            "title": "Psub"
+          },
+          "multi": {
+            "type": "string",
+            "title": "Multi"
+          },
+          "qbuf": {
+            "type": "string",
+            "title": "Qbuf"
+          },
+          "qbuf-free": {
+            "type": "string",
+            "title": "Qbuf-Free"
+          },
+          "obl": {
+            "type": "string",
+            "title": "Obl"
+          },
+          "oll": {
+            "type": "string",
+            "title": "Oll"
+          },
+          "omem": {
+            "type": "string",
+            "title": "Omem"
+          },
+          "events": {
+            "type": "string",
+            "title": "Events"
+          },
+          "cmd": {
+            "type": "string",
+            "title": "Cmd"
+          },
+          "user": {
+            "type": "string",
+            "title": "User"
+          },
+          "laddr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laddr",
+            "description": "Local address (Redis 6.2+)"
+          },
+          "ssub": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssub",
+            "description": "Shard channel subscriptions (Redis 7.0+)"
+          },
+          "argv-mem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Argv-Mem",
+            "description": "Redis 6.2+"
+          },
+          "multi-mem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multi-Mem",
+            "description": "Redis 7.0+"
+          },
+          "tot-mem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tot-Mem"
+          },
+          "rbs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rbs",
+            "description": "Read buffer size (Redis 7.0+)"
+          },
+          "rbp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rbp",
+            "description": "Read buffer peak (Redis 7.0+)"
+          },
+          "redir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redir",
+            "description": "Client-side caching redirect client ID"
+          },
+          "resp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resp",
+            "description": "RESP protocol version (Redis 7.0+)"
+          },
+          "lib-name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lib-Name",
+            "description": "Redis 7.2+"
+          },
+          "lib-ver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lib-Ver",
+            "description": "Redis 7.2+"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "addr",
+          "fd",
+          "name",
+          "age",
+          "idle",
+          "flags",
+          "db",
+          "sub",
+          "psub",
+          "multi",
+          "qbuf",
+          "qbuf-free",
+          "obl",
+          "oll",
+          "omem",
+          "events",
+          "cmd",
+          "user"
+        ],
+        "title": "ClientInfo",
+        "description": "One CLIENT LIST entry. All values are strings, as Redis reports them.\nOptional fields appear only on the Redis versions that report them;\nfields from versions newer than these are passed through as well."
+      },
+      "ClientInfoListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ClientInfo"
+            },
+            "type": "array",
             "title": "Data"
           },
           "error": {
@@ -5012,7 +5291,326 @@
           }
         },
         "type": "object",
-        "title": "APIResponse"
+        "required": [
+          "data"
+        ],
+        "title": "ClientInfoListResponse"
+      },
+      "ClientsKilled": {
+        "properties": {
+          "killed": {
+            "type": "integer",
+            "title": "Killed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "killed"
+        ],
+        "title": "ClientsKilled"
+      },
+      "ClientsKilledResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClientsKilled"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ClientsKilledResponse"
+      },
+      "ConfigSetResult": {
+        "properties": {
+          "parameter": {
+            "type": "string",
+            "title": "Parameter"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "parameter",
+          "value"
+        ],
+        "title": "ConfigSetResult"
+      },
+      "ConfigSetResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConfigSetResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ConfigSetResultResponse"
+      },
+      "ConsumerGroup": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "consumers": {
+            "type": "integer",
+            "title": "Consumers"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "last_delivered_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivered Id"
+          },
+          "lag": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lag",
+            "description": "Entries not yet delivered to the group; null on Redis < 7.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "consumers",
+          "pending",
+          "last_delivered_id",
+          "lag"
+        ],
+        "title": "ConsumerGroup"
+      },
+      "DatabaseInfo": {
+        "properties": {
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          },
+          "keys": {
+            "type": "integer",
+            "title": "Keys"
+          },
+          "expires": {
+            "type": "integer",
+            "title": "Expires"
+          },
+          "avg_ttl": {
+            "type": "integer",
+            "title": "Avg Ttl",
+            "description": "Milliseconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "db",
+          "keys",
+          "expires",
+          "avg_ttl"
+        ],
+        "title": "DatabaseInfo"
+      },
+      "DatabaseInfoListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DatabaseInfo"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "DatabaseInfoListResponse"
+      },
+      "EvalResult": {
+        "properties": {
+          "result": {
+            "title": "Result",
+            "description": "Raw script return value (null, integer, string or nested array)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "title": "EvalResult"
+      },
+      "EvalResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EvalResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "EvalResultResponse"
+      },
+      "ExpiringKey": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "ttl": {
+            "type": "integer",
+            "title": "Ttl",
+            "description": "Seconds"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "ttl",
+          "type"
+        ],
+        "title": "ExpiringKey"
+      },
+      "ExpiringKeyListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ExpiringKey"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ExpiringKeyListResponse"
+      },
+      "FlushDbResult": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "flushdb",
+            "title": "Action"
+          },
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "db"
+        ],
+        "title": "FlushDbResult"
+      },
+      "FlushDbResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/FlushDbResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "FlushDbResultResponse"
       },
       "HTTPValidationError": {
         "properties": {
@@ -5026,6 +5624,2279 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HashAll": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "fields"
+        ],
+        "title": "HashAll"
+      },
+      "HashAllResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HashAll"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "HashAllResponse"
+      },
+      "HashFieldDeleted": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "field",
+          "deleted"
+        ],
+        "title": "HashFieldDeleted"
+      },
+      "HashFieldDeletedResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HashFieldDeleted"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "HashFieldDeletedResponse"
+      },
+      "HashFieldNames": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "fields"
+        ],
+        "title": "HashFieldNames"
+      },
+      "HashFieldNamesResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HashFieldNames"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "HashFieldNamesResponse"
+      },
+      "HashFieldValue": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "field",
+          "value"
+        ],
+        "title": "HashFieldValue"
+      },
+      "HashFieldValueResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HashFieldValue"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "HashFieldValueResponse"
+      },
+      "HealthStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthStatus"
+      },
+      "HealthStatusResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HealthStatus"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "HealthStatusResponse"
+      },
+      "KeyCopyResult": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "destination": {
+            "type": "string",
+            "title": "Destination"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "destination",
+          "success"
+        ],
+        "title": "KeyCopyResult"
+      },
+      "KeyCopyResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyCopyResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyCopyResultResponse"
+      },
+      "KeyCount": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "db"
+        ],
+        "title": "KeyCount"
+      },
+      "KeyCountResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyCount"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyCountResponse"
+      },
+      "KeyDetail": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "string | hash | list | set | zset | stream"
+          },
+          "ttl": {
+            "type": "integer",
+            "title": "Ttl",
+            "description": "Seconds to live; -1 = no expiry, -2 = key does not exist"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoding"
+          },
+          "memory_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Bytes"
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length",
+            "description": "String length in bytes, or number of collection items"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ZSetMember"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "$ref": "#/components/schemas/StreamEntry"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Depends on `type`: string \u2192 string; hash \u2192 object of field \u2192 value; list \u2192 array of strings (LRANGE page); set \u2192 sorted array of strings; zset \u2192 array of {member, score}; stream \u2192 array of {id, fields}."
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "True when `value` is only part of the key's content"
+          },
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "ttl",
+          "encoding",
+          "memory_bytes",
+          "length",
+          "value",
+          "truncated",
+          "db"
+        ],
+        "title": "KeyDetail"
+      },
+      "KeyDetailResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyDetail"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyDetailResponse"
+      },
+      "KeyDump": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "dump_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dump Base64",
+            "description": "null when the key does not exist"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "dump_base64"
+        ],
+        "title": "KeyDump"
+      },
+      "KeyDumpResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyDump"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyDumpResponse"
+      },
+      "KeyExpireResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "expire_set",
+              "persisted"
+            ],
+            "title": "Action"
+          },
+          "ttl": {
+            "type": "integer",
+            "title": "Ttl",
+            "description": "The TTL now set, or -1 when persisted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "action",
+          "ttl"
+        ],
+        "title": "KeyExpireResult"
+      },
+      "KeyExpireResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyExpireResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyExpireResultResponse"
+      },
+      "KeyMemory": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "title": "Memory Bytes"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "memory_bytes",
+          "type"
+        ],
+        "title": "KeyMemory"
+      },
+      "KeyMemoryListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/KeyMemory"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyMemoryListResponse"
+      },
+      "KeyMetadata": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type",
+            "description": "`none` when the key does not exist"
+          },
+          "ttl": {
+            "type": "integer",
+            "title": "Ttl",
+            "description": "Seconds to live; -1 = no expiry, -2 = key does not exist"
+          },
+          "pttl": {
+            "type": "integer",
+            "title": "Pttl"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoding"
+          },
+          "refcount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refcount"
+          },
+          "idletime": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idletime",
+            "description": "Seconds since last access"
+          },
+          "memory_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "ttl",
+          "pttl",
+          "encoding",
+          "refcount",
+          "idletime",
+          "memory_bytes"
+        ],
+        "title": "KeyMetadata"
+      },
+      "KeyMetadataResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyMetadata"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyMetadataResponse"
+      },
+      "KeyRenameResult": {
+        "properties": {
+          "old_key": {
+            "type": "string",
+            "title": "Old Key"
+          },
+          "new_key": {
+            "type": "string",
+            "title": "New Key"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "False when `nx` was set and `new_key` already existed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "old_key",
+          "new_key",
+          "success"
+        ],
+        "title": "KeyRenameResult"
+      },
+      "KeyRenameResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyRenameResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyRenameResultResponse"
+      },
+      "KeyScanItem": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "string | hash | list | set | zset | stream; `unknown` if TYPE failed"
+          },
+          "ttl": {
+            "type": "integer",
+            "title": "Ttl",
+            "description": "Seconds to live; -1 = no expiry, -2 = key does not exist"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "ttl"
+        ],
+        "title": "KeyScanItem"
+      },
+      "KeyScanResult": {
+        "properties": {
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/KeyScanItem"
+            },
+            "type": "array",
+            "title": "Keys"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor",
+            "description": "Pass back as `cursor` for the next page; 0 when the scan is complete"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Number of keys in this page"
+          },
+          "pattern": {
+            "type": "string",
+            "title": "Pattern"
+          },
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keys",
+          "cursor",
+          "count",
+          "pattern",
+          "db"
+        ],
+        "title": "KeyScanResult"
+      },
+      "KeyScanResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyScanResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyScanResultResponse"
+      },
+      "KeyTTL": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "ttl": {
+            "type": "integer",
+            "title": "Ttl",
+            "description": "Seconds to live; -1 = no expiry, -2 = key does not exist"
+          },
+          "pttl": {
+            "type": "integer",
+            "title": "Pttl",
+            "description": "Milliseconds to live; -1 = no expiry, -2 = key does not exist"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "ttl",
+          "pttl"
+        ],
+        "title": "KeyTTL"
+      },
+      "KeyTTLResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyTTL"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyTTLResponse"
+      },
+      "KeysDeleted": {
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "description": "Number of keys that existed and were removed"
+          },
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keys",
+            "description": "Keys that were requested for deletion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "keys"
+        ],
+        "title": "KeysDeleted"
+      },
+      "KeysDeletedResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeysDeleted"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeysDeletedResponse"
+      },
+      "KeyspaceAnalysis": {
+        "properties": {
+          "total_scanned": {
+            "type": "integer",
+            "title": "Total Scanned"
+          },
+          "type_distribution": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Type Distribution",
+            "description": "Key type \u2192 count"
+          },
+          "top_prefixes": {
+            "items": {
+              "$ref": "#/components/schemas/PrefixCount"
+            },
+            "type": "array",
+            "title": "Top Prefixes",
+            "description": "Top 50, most common first"
+          },
+          "ttl_distribution": {
+            "$ref": "#/components/schemas/TTLDistribution"
+          },
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_scanned",
+          "type_distribution",
+          "top_prefixes",
+          "ttl_distribution",
+          "db"
+        ],
+        "title": "KeyspaceAnalysis"
+      },
+      "KeyspaceAnalysisResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/KeyspaceAnalysis"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "KeyspaceAnalysisResponse"
+      },
+      "LatencyEvent": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "latest_ms": {
+            "type": "integer",
+            "title": "Latest Ms",
+            "description": "Currently the Unix timestamp (seconds) of the latest spike, not a duration"
+          },
+          "max_ms": {
+            "type": "integer",
+            "title": "Max Ms",
+            "description": "Currently the latest spike's latency in ms, not the all-time max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event",
+          "latest_ms",
+          "max_ms"
+        ],
+        "title": "LatencyEvent"
+      },
+      "LatencyEventListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LatencyEvent"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "LatencyEventListResponse"
+      },
+      "LatencySample": {
+        "properties": {
+          "timestamp": {
+            "type": "integer",
+            "title": "Timestamp",
+            "description": "Unix seconds"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "latency_ms"
+        ],
+        "title": "LatencySample"
+      },
+      "LatencySampleListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/LatencySample"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "LatencySampleListResponse"
+      },
+      "ListLength": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "length": {
+            "type": "integer",
+            "title": "Length",
+            "description": "List length after the push"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "length"
+        ],
+        "title": "ListLength"
+      },
+      "ListLengthResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListLength"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ListLengthResponse"
+      },
+      "ListPopResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "null when the list was empty or missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "ListPopResult"
+      },
+      "ListPopResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListPopResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ListPopResultResponse"
+      },
+      "ListRange": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "length": {
+            "type": "integer",
+            "title": "Length",
+            "description": "Total list length"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "stop": {
+            "type": "integer",
+            "title": "Stop"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "items",
+          "length",
+          "start",
+          "stop"
+        ],
+        "title": "ListRange"
+      },
+      "ListRangeResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListRange"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ListRangeResponse"
+      },
+      "ListRemoveResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "removed"
+        ],
+        "title": "ListRemoveResult"
+      },
+      "ListRemoveResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListRemoveResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ListRemoveResultResponse"
+      },
+      "ListSetResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "index",
+          "value"
+        ],
+        "title": "ListSetResult"
+      },
+      "ListSetResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListSetResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ListSetResultResponse"
+      },
+      "MallocStats": {
+        "properties": {
+          "malloc_stats": {
+            "type": "string",
+            "title": "Malloc Stats"
+          }
+        },
+        "type": "object",
+        "required": [
+          "malloc_stats"
+        ],
+        "title": "MallocStats"
+      },
+      "MallocStatsResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MallocStats"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "MallocStatsResponse"
+      },
+      "MemberRemoved": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "member": {
+            "type": "string",
+            "title": "Member"
+          },
+          "removed": {
+            "type": "boolean",
+            "title": "Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "member",
+          "removed"
+        ],
+        "title": "MemberRemoved"
+      },
+      "MemberRemovedResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MemberRemoved"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "MemberRemovedResponse"
+      },
+      "MembersAdded": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added",
+            "description": "Number of members newly added"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "added"
+        ],
+        "title": "MembersAdded"
+      },
+      "MembersAddedResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MembersAdded"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "MembersAddedResponse"
+      },
+      "MemoryStats": {
+        "properties": {
+          "stats": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Stats",
+            "description": "MEMORY STATS as returned by Redis (keys vary by version)"
+          },
+          "doctor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doctor",
+            "description": "MEMORY DOCTOR report; null if unavailable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stats",
+          "doctor"
+        ],
+        "title": "MemoryStats"
+      },
+      "MemoryStatsResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MemoryStats"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "MemoryStatsResponse"
+      },
+      "Overview": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "redis": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RedisOverview"
+              },
+              {
+                "$ref": "#/components/schemas/RedisOverviewError"
+              }
+            ],
+            "title": "Redis",
+            "discriminator": {
+              "propertyName": "status",
+              "mapping": {
+                "error": "#/components/schemas/RedisOverviewError",
+                "ok": "#/components/schemas/RedisOverview"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "redis"
+        ],
+        "title": "Overview"
+      },
+      "OverviewResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Overview"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "OverviewResponse"
+      },
+      "PendingConsumer": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "pending_count": {
+            "type": "integer",
+            "title": "Pending Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "pending_count"
+        ],
+        "title": "PendingConsumer"
+      },
+      "PendingSummary": {
+        "properties": {
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "total_pending": {
+            "type": "integer",
+            "title": "Total Pending"
+          },
+          "min_pending_id": {
+            "type": "string",
+            "title": "Min Pending Id"
+          },
+          "max_pending_id": {
+            "type": "string",
+            "title": "Max Pending Id"
+          },
+          "consumers": {
+            "items": {
+              "$ref": "#/components/schemas/PendingConsumer"
+            },
+            "type": "array",
+            "title": "Consumers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "group",
+          "total_pending",
+          "min_pending_id",
+          "max_pending_id",
+          "consumers"
+        ],
+        "title": "PendingSummary"
+      },
+      "Performance": {
+        "properties": {
+          "ops_per_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ops Per Sec"
+          },
+          "hit_rate_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate Percent",
+            "description": "null before any keyspace lookups"
+          },
+          "miss_rate_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Miss Rate Percent",
+            "description": "null before any keyspace lookups"
+          },
+          "keyspace_hits": {
+            "type": "integer",
+            "title": "Keyspace Hits"
+          },
+          "keyspace_misses": {
+            "type": "integer",
+            "title": "Keyspace Misses"
+          },
+          "total_commands_processed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Commands Processed"
+          },
+          "total_connections_received": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Connections Received"
+          },
+          "evicted_keys": {
+            "type": "integer",
+            "title": "Evicted Keys"
+          },
+          "evicted_keys_per_sec": {
+            "type": "number",
+            "title": "Evicted Keys Per Sec",
+            "description": "Average over uptime"
+          },
+          "expired_keys": {
+            "type": "integer",
+            "title": "Expired Keys"
+          },
+          "expired_keys_per_sec": {
+            "type": "number",
+            "title": "Expired Keys Per Sec",
+            "description": "Average over uptime"
+          },
+          "rejected_connections": {
+            "type": "integer",
+            "title": "Rejected Connections"
+          },
+          "total_net_input_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Net Input Bytes"
+          },
+          "total_net_output_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Net Output Bytes"
+          },
+          "net_input_bytes_per_sec": {
+            "type": "number",
+            "title": "Net Input Bytes Per Sec",
+            "description": "Average over uptime"
+          },
+          "net_output_bytes_per_sec": {
+            "type": "number",
+            "title": "Net Output Bytes Per Sec",
+            "description": "Average over uptime"
+          },
+          "connected_clients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Clients"
+          },
+          "blocked_clients": {
+            "type": "integer",
+            "title": "Blocked Clients"
+          },
+          "tracking_clients": {
+            "type": "integer",
+            "title": "Tracking Clients"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ops_per_sec",
+          "hit_rate_percent",
+          "miss_rate_percent",
+          "keyspace_hits",
+          "keyspace_misses",
+          "total_commands_processed",
+          "total_connections_received",
+          "evicted_keys",
+          "evicted_keys_per_sec",
+          "expired_keys",
+          "expired_keys_per_sec",
+          "rejected_connections",
+          "total_net_input_bytes",
+          "total_net_output_bytes",
+          "net_input_bytes_per_sec",
+          "net_output_bytes_per_sec",
+          "connected_clients",
+          "blocked_clients",
+          "tracking_clients",
+          "uptime_seconds"
+        ],
+        "title": "Performance"
+      },
+      "PerformanceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Performance"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "PerformanceResponse"
+      },
+      "PrefixCount": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "description": "Colon-delimited prefix, e.g. `user:*`; full key names at the leaf level"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prefix",
+          "count"
+        ],
+        "title": "PrefixCount"
+      },
+      "PubSubChannels": {
+        "properties": {
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels",
+          "count"
+        ],
+        "title": "PubSubChannels"
+      },
+      "PubSubChannelsResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PubSubChannels"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "PubSubChannelsResponse"
+      },
+      "PubSubNumPat": {
+        "properties": {
+          "pattern_subscriptions": {
+            "type": "integer",
+            "title": "Pattern Subscriptions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pattern_subscriptions"
+        ],
+        "title": "PubSubNumPat"
+      },
+      "PubSubNumPatResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PubSubNumPat"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "PubSubNumPatResponse"
+      },
+      "PubSubNumSubResponse": {
+        "properties": {
+          "data": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "PubSubNumSubResponse"
+      },
+      "PublishResult": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "receivers": {
+            "type": "integer",
+            "title": "Receivers",
+            "description": "Number of subscribers that received the message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "message",
+          "receivers"
+        ],
+        "title": "PublishResult"
+      },
+      "PublishResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PublishResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "PublishResultResponse"
+      },
+      "QueueDetail": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "list",
+              "stream"
+            ],
+            "title": "Type"
+          },
+          "depth": {
+            "type": "integer",
+            "title": "Depth"
+          },
+          "sample_oldest": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Oldest",
+            "description": "Lists only: entries from the head; null for streams"
+          },
+          "consumer_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ConsumerGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Groups",
+            "description": "Streams only; null for lists"
+          },
+          "pending_summary": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PendingSummary"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Summary",
+            "description": "Streams only; null for lists or when nothing is pending"
+          },
+          "oldest_pending_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Pending Age Seconds",
+            "description": "Age of the oldest unacknowledged stream entry; null when none"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "depth",
+          "sample_oldest",
+          "consumer_groups",
+          "pending_summary",
+          "oldest_pending_age_seconds"
+        ],
+        "title": "QueueDetail"
+      },
+      "QueueDetailResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueueDetail"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "QueueDetailResponse"
+      },
+      "QueueReorderResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "position": {
+            "type": "string",
+            "enum": [
+              "top",
+              "bottom"
+            ],
+            "title": "Position"
+          },
+          "term": {
+            "type": "string",
+            "title": "Term"
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched",
+            "description": "Entries that matched `term` and were moved"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Entries in the list at the time of the move"
+          },
+          "arrived_during_move": {
+            "type": "integer",
+            "title": "Arrived During Move",
+            "description": "Entries pushed during the move, appended after the reordered content"
+          },
+          "temp_key": {
+            "type": "string",
+            "title": "Temp Key",
+            "description": "Temporary key used during the move (already renamed back)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "position",
+          "term",
+          "matched",
+          "total",
+          "arrived_during_move",
+          "temp_key"
+        ],
+        "title": "QueueReorderResult"
+      },
+      "QueueReorderResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueueReorderResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "QueueReorderResultResponse"
+      },
+      "QueueSummary": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "list",
+              "stream"
+            ],
+            "title": "Type"
+          },
+          "depth": {
+            "type": "integer",
+            "title": "Depth",
+            "description": "LLEN for lists, XLEN for streams"
+          },
+          "consumer_groups": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ConsumerGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumer Groups",
+            "description": "Streams only; null for lists"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "depth",
+          "consumer_groups"
+        ],
+        "title": "QueueSummary"
+      },
+      "QueueSummaryListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/QueueSummary"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "QueueSummaryListResponse"
       },
       "RedisBulkDeleteRequest": {
         "properties": {
@@ -5045,6 +7916,34 @@
           "keys"
         ],
         "title": "RedisBulkDeleteRequest"
+      },
+      "RedisConfigResponse": {
+        "properties": {
+          "data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "RedisConfigResponse"
       },
       "RedisConfigSetRequest": {
         "properties": {
@@ -5148,6 +8047,106 @@
         ],
         "title": "RedisHashFieldRequest"
       },
+      "RedisHealth": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "redis_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Version"
+          },
+          "uptime_in_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime In Seconds"
+          },
+          "connected_clients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Clients"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "redis_version",
+          "uptime_in_seconds",
+          "connected_clients"
+        ],
+        "title": "RedisHealth"
+      },
+      "RedisHealthResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RedisHealth"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "RedisHealthResponse"
+      },
+      "RedisInfoResponse": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "RedisInfoResponse"
+      },
       "RedisKeySetRequest": {
         "properties": {
           "type": {
@@ -5227,6 +8226,203 @@
           "value"
         ],
         "title": "RedisListSetRequest"
+      },
+      "RedisOverview": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          },
+          "connected_clients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected Clients"
+          },
+          "used_memory_bytes": {
+            "type": "integer",
+            "title": "Used Memory Bytes"
+          },
+          "max_memory_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Memory Bytes",
+            "description": "null when no maxmemory limit is set"
+          },
+          "memory_percent_used": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Percent Used"
+          },
+          "total_keys": {
+            "type": "integer",
+            "title": "Total Keys"
+          },
+          "ops_per_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ops Per Sec"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate",
+            "description": "Percent; null before any keyspace lookups"
+          },
+          "evicted_keys": {
+            "type": "integer",
+            "title": "Evicted Keys"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "connected_slaves": {
+            "type": "integer",
+            "title": "Connected Slaves"
+          },
+          "aof_enabled": {
+            "type": "boolean",
+            "title": "Aof Enabled"
+          },
+          "top_queues": {
+            "items": {
+              "$ref": "#/components/schemas/QueueSummary"
+            },
+            "type": "array",
+            "title": "Top Queues",
+            "description": "Up to 10 deepest queues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version",
+          "uptime_seconds",
+          "connected_clients",
+          "used_memory_bytes",
+          "max_memory_bytes",
+          "memory_percent_used",
+          "total_keys",
+          "ops_per_sec",
+          "hit_rate",
+          "evicted_keys",
+          "role",
+          "connected_slaves",
+          "aof_enabled",
+          "top_queues"
+        ],
+        "title": "RedisOverview"
+      },
+      "RedisOverviewError": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "error",
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "top_queues": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QueueSummary"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Queues"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "RedisOverviewError",
+        "description": "Redis could not be read. The message is in `error` or `detail`, depending on where it failed."
       },
       "RedisPublishRequest": {
         "properties": {
@@ -5325,6 +8521,66 @@
         ],
         "title": "RedisStreamAddRequest"
       },
+      "RedisSummary": {
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/SummaryServer"
+          },
+          "clients": {
+            "$ref": "#/components/schemas/SummaryClients"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/SummaryMemory"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/SummaryPerformance"
+          },
+          "keyspace": {
+            "$ref": "#/components/schemas/SummaryKeyspace"
+          },
+          "replication": {
+            "$ref": "#/components/schemas/SummaryReplication"
+          },
+          "persistence": {
+            "$ref": "#/components/schemas/SummaryPersistence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "server",
+          "clients",
+          "memory",
+          "performance",
+          "keyspace",
+          "replication",
+          "persistence"
+        ],
+        "title": "RedisSummary"
+      },
+      "RedisSummaryResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RedisSummary"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "RedisSummaryResponse"
+      },
       "RedisZSetAddRequest": {
         "properties": {
           "members": {
@@ -5351,6 +8607,1294 @@
           "members"
         ],
         "title": "RedisZSetAddRequest"
+      },
+      "Replica": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "lag_seconds": {
+            "type": "integer",
+            "title": "Lag Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ip",
+          "port",
+          "state",
+          "offset",
+          "lag_seconds"
+        ],
+        "title": "Replica"
+      },
+      "Replication": {
+        "properties": {
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role",
+            "description": "master | slave"
+          },
+          "connected_slaves": {
+            "type": "integer",
+            "title": "Connected Slaves"
+          },
+          "master_replid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Replid"
+          },
+          "master_repl_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Repl Offset"
+          },
+          "repl_backlog_active": {
+            "type": "boolean",
+            "title": "Repl Backlog Active"
+          },
+          "repl_backlog_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repl Backlog Size"
+          },
+          "replicas": {
+            "items": {
+              "$ref": "#/components/schemas/Replica"
+            },
+            "type": "array",
+            "title": "Replicas"
+          },
+          "master_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Host"
+          },
+          "master_port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Port"
+          },
+          "master_link_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Link Status",
+            "description": "up | down"
+          },
+          "master_last_io_seconds_ago": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Last Io Seconds Ago"
+          },
+          "master_sync_in_progress": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Sync In Progress"
+          },
+          "slave_repl_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slave Repl Offset"
+          },
+          "slave_priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slave Priority"
+          },
+          "slave_read_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slave Read Only"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "connected_slaves",
+          "master_replid",
+          "master_repl_offset",
+          "repl_backlog_active",
+          "repl_backlog_size",
+          "replicas"
+        ],
+        "title": "Replication",
+        "description": "`master_host` \u2026 `slave_read_only` are present only when `role` is `slave`/`replica`."
+      },
+      "ReplicationResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Replication"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ReplicationResponse"
+      },
+      "SetIsMember": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "member": {
+            "type": "string",
+            "title": "Member"
+          },
+          "is_member": {
+            "type": "boolean",
+            "title": "Is Member"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "member",
+          "is_member"
+        ],
+        "title": "SetIsMember"
+      },
+      "SetIsMemberResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SetIsMember"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "SetIsMemberResponse"
+      },
+      "SetMembers": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members",
+            "description": "Sorted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "members"
+        ],
+        "title": "SetMembers"
+      },
+      "SetMembersResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SetMembers"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "SetMembersResponse"
+      },
+      "SetRandomMembers": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "members": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Members",
+            "description": "A single string when `count` is 1 (null if the set is empty); otherwise an array"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "members"
+        ],
+        "title": "SetRandomMembers"
+      },
+      "SetRandomMembersResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SetRandomMembers"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "SetRandomMembersResponse"
+      },
+      "SlowlogEntry": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "start_time": {
+            "type": "integer",
+            "title": "Start Time",
+            "description": "Unix seconds"
+          },
+          "duration_microseconds": {
+            "type": "integer",
+            "title": "Duration Microseconds"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command"
+          },
+          "client_addr": {
+            "type": "string",
+            "title": "Client Addr"
+          },
+          "client_name": {
+            "type": "string",
+            "title": "Client Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "start_time",
+          "duration_microseconds",
+          "command",
+          "client_addr",
+          "client_name"
+        ],
+        "title": "SlowlogEntry"
+      },
+      "SlowlogEntryListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SlowlogEntry"
+            },
+            "type": "array",
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "SlowlogEntryListResponse"
+      },
+      "SlowlogLength": {
+        "properties": {
+          "length": {
+            "type": "integer",
+            "title": "Length"
+          }
+        },
+        "type": "object",
+        "required": [
+          "length"
+        ],
+        "title": "SlowlogLength"
+      },
+      "SlowlogLengthResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SlowlogLength"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "SlowlogLengthResponse"
+      },
+      "StreamAddResult": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "ID of the new entry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "id"
+        ],
+        "title": "StreamAddResult"
+      },
+      "StreamAddResultResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StreamAddResult"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "StreamAddResultResponse"
+      },
+      "StreamEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "fields"
+        ],
+        "title": "StreamEntry"
+      },
+      "StreamEntryDeleted": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "entry_id": {
+            "type": "string",
+            "title": "Entry Id"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "entry_id",
+          "deleted"
+        ],
+        "title": "StreamEntryDeleted"
+      },
+      "StreamEntryDeletedResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StreamEntryDeleted"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "StreamEntryDeletedResponse"
+      },
+      "StreamInfo": {
+        "properties": {
+          "length": {
+            "type": "integer",
+            "title": "Length"
+          },
+          "radix-tree-keys": {
+            "type": "integer",
+            "title": "Radix-Tree-Keys"
+          },
+          "radix-tree-nodes": {
+            "type": "integer",
+            "title": "Radix-Tree-Nodes"
+          },
+          "last-generated-id": {
+            "type": "string",
+            "title": "Last-Generated-Id"
+          },
+          "groups": {
+            "type": "integer",
+            "title": "Groups"
+          },
+          "first-entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First-Entry",
+            "description": "Python repr of the (id, fields) tuple, e.g. \"('1700000000000-0', {'f': 'v'})\""
+          },
+          "last-entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last-Entry",
+            "description": "Same format as `first-entry`"
+          },
+          "max-deleted-entry-id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max-Deleted-Entry-Id",
+            "description": "Redis 7.0+"
+          },
+          "entries-added": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entries-Added",
+            "description": "Redis 7.0+"
+          },
+          "recorded-first-entry-id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded-First-Entry-Id",
+            "description": "Redis 7.0+"
+          }
+        },
+        "type": "object",
+        "required": [
+          "length",
+          "radix-tree-keys",
+          "radix-tree-nodes",
+          "last-generated-id",
+          "groups",
+          "first-entry",
+          "last-entry"
+        ],
+        "title": "StreamInfo",
+        "description": "XINFO STREAM. Field names are Redis's own (hyphenated)."
+      },
+      "StreamInfoResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StreamInfo"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "StreamInfoResponse"
+      },
+      "StreamRange": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StreamEntry"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "length": {
+            "type": "integer",
+            "title": "Length",
+            "description": "Total number of entries in the stream"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "items",
+          "length"
+        ],
+        "title": "StreamRange"
+      },
+      "StreamRangeResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StreamRange"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "StreamRangeResponse"
+      },
+      "SummaryClients": {
+        "properties": {
+          "connected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected"
+          },
+          "blocked": {
+            "type": "integer",
+            "title": "Blocked"
+          },
+          "tracking": {
+            "type": "integer",
+            "title": "Tracking"
+          },
+          "max_clients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Clients"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "blocked",
+          "tracking",
+          "max_clients"
+        ],
+        "title": "SummaryClients"
+      },
+      "SummaryDatabase": {
+        "properties": {
+          "db": {
+            "type": "integer",
+            "title": "Db"
+          },
+          "keys": {
+            "type": "integer",
+            "title": "Keys"
+          },
+          "expires": {
+            "type": "integer",
+            "title": "Expires"
+          },
+          "avg_ttl_ms": {
+            "type": "integer",
+            "title": "Avg Ttl Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "db",
+          "keys",
+          "expires",
+          "avg_ttl_ms"
+        ],
+        "title": "SummaryDatabase"
+      },
+      "SummaryKeyspace": {
+        "properties": {
+          "total_keys": {
+            "type": "integer",
+            "title": "Total Keys"
+          },
+          "databases": {
+            "items": {
+              "$ref": "#/components/schemas/SummaryDatabase"
+            },
+            "type": "array",
+            "title": "Databases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_keys",
+          "databases"
+        ],
+        "title": "SummaryKeyspace"
+      },
+      "SummaryMemory": {
+        "properties": {
+          "used_bytes": {
+            "type": "integer",
+            "title": "Used Bytes"
+          },
+          "used_human": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Human"
+          },
+          "max_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Bytes",
+            "description": "null when no maxmemory limit is set"
+          },
+          "max_human": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Human"
+          },
+          "percent_used": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Used",
+            "description": "null when no maxmemory limit is set"
+          },
+          "peak_used_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Used Bytes"
+          },
+          "rss_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rss Bytes"
+          },
+          "fragmentation_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fragmentation Ratio"
+          },
+          "eviction_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eviction Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used_bytes",
+          "used_human",
+          "max_bytes",
+          "max_human",
+          "percent_used",
+          "peak_used_bytes",
+          "rss_bytes",
+          "fragmentation_ratio",
+          "eviction_policy"
+        ],
+        "title": "SummaryMemory"
+      },
+      "SummaryPerformance": {
+        "properties": {
+          "ops_per_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ops Per Sec"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate",
+            "description": "Percent; null before any keyspace lookups"
+          },
+          "evicted_keys": {
+            "type": "integer",
+            "title": "Evicted Keys"
+          },
+          "evicted_keys_per_sec": {
+            "type": "number",
+            "title": "Evicted Keys Per Sec",
+            "description": "Average over uptime"
+          },
+          "expired_keys": {
+            "type": "integer",
+            "title": "Expired Keys"
+          },
+          "expired_keys_per_sec": {
+            "type": "number",
+            "title": "Expired Keys Per Sec",
+            "description": "Average over uptime"
+          },
+          "total_commands_processed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Commands Processed"
+          },
+          "total_net_input_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Net Input Bytes"
+          },
+          "total_net_output_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Net Output Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ops_per_sec",
+          "hit_rate",
+          "evicted_keys",
+          "evicted_keys_per_sec",
+          "expired_keys",
+          "expired_keys_per_sec",
+          "total_commands_processed",
+          "total_net_input_bytes",
+          "total_net_output_bytes"
+        ],
+        "title": "SummaryPerformance"
+      },
+      "SummaryPersistence": {
+        "properties": {
+          "rdb_enabled": {
+            "type": "boolean",
+            "title": "Rdb Enabled"
+          },
+          "aof_enabled": {
+            "type": "boolean",
+            "title": "Aof Enabled"
+          },
+          "last_save_timestamp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Save Timestamp",
+            "description": "Unix seconds"
+          },
+          "last_save_ok": {
+            "type": "boolean",
+            "title": "Last Save Ok"
+          },
+          "rdb_changes_since_last_save": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rdb Changes Since Last Save"
+          },
+          "aof_last_rewrite_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aof Last Rewrite Status"
+          },
+          "aof_rewrite_in_progress": {
+            "type": "boolean",
+            "title": "Aof Rewrite In Progress"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rdb_enabled",
+          "aof_enabled",
+          "last_save_timestamp",
+          "last_save_ok",
+          "rdb_changes_since_last_save",
+          "aof_last_rewrite_status",
+          "aof_rewrite_in_progress"
+        ],
+        "title": "SummaryPersistence"
+      },
+      "SummaryReplication": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "master | slave"
+          },
+          "connected_slaves": {
+            "type": "integer",
+            "title": "Connected Slaves"
+          },
+          "master_repl_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Repl Offset"
+          },
+          "repl_backlog_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repl Backlog Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "connected_slaves",
+          "master_repl_offset",
+          "repl_backlog_size"
+        ],
+        "title": "SummaryReplication"
+      },
+      "SummaryServer": {
+        "properties": {
+          "redis_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redis Version"
+          },
+          "uptime_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uptime Seconds"
+          },
+          "hz": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hz"
+          },
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config File"
+          },
+          "os": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Os"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "redis_version",
+          "uptime_seconds",
+          "hz",
+          "config_file",
+          "os",
+          "mode"
+        ],
+        "title": "SummaryServer"
+      },
+      "TTLDistribution": {
+        "properties": {
+          "no_expiry": {
+            "type": "integer",
+            "title": "No Expiry"
+          },
+          "lt_1h": {
+            "type": "integer",
+            "title": "Lt 1H"
+          },
+          "1h_to_24h": {
+            "type": "integer",
+            "title": "1H To 24H"
+          },
+          "gt_24h": {
+            "type": "integer",
+            "title": "Gt 24H"
+          }
+        },
+        "type": "object",
+        "required": [
+          "no_expiry",
+          "lt_1h",
+          "1h_to_24h",
+          "gt_24h"
+        ],
+        "title": "TTLDistribution"
       },
       "ValidationError": {
         "properties": {
@@ -5384,6 +9928,211 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ZSetMember": {
+        "properties": {
+          "member": {
+            "type": "string",
+            "title": "Member"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member",
+          "score"
+        ],
+        "title": "ZSetMember"
+      },
+      "ZSetMemberScore": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "member": {
+            "type": "string",
+            "title": "Member"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "null when the member is not in the set"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank",
+            "description": "0-based rank by ascending score"
+          },
+          "revrank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revrank",
+            "description": "0-based rank by descending score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "member",
+          "score",
+          "rank",
+          "revrank"
+        ],
+        "title": "ZSetMemberScore"
+      },
+      "ZSetMemberScoreResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ZSetMemberScore"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ZSetMemberScoreResponse"
+      },
+      "ZSetRange": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ZSetMember"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "length": {
+            "type": "integer",
+            "title": "Length",
+            "description": "Total number of members"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start"
+          },
+          "stop": {
+            "type": "integer",
+            "title": "Stop"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "items",
+          "length",
+          "start",
+          "stop"
+        ],
+        "title": "ZSetRange"
+      },
+      "ZSetRangeResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ZSetRange"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ZSetRangeResponse"
+      },
+      "ZSetScoreRange": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ZSetMember"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "items"
+        ],
+        "title": "ZSetScoreRange"
+      },
+      "ZSetScoreRangeResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ZSetScoreRange"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "ZSetScoreRangeResponse"
       }
     }
   }

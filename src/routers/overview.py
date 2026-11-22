@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.models.schemas import APIResponse
+from src.models.redis_responses import (
+    HealthStatus,
+    Overview,
+)
+from src.models.schemas import APIResponse, api_response
 from src.services import redis_service as rs
 
 router = APIRouter(tags=["Overview"])
@@ -29,7 +33,7 @@ router = APIRouter(tags=["Overview"])
         "If Redis is unavailable the section contains "
         "`{\"status\": \"error\", \"detail\": \"...\"}`. HTTP status is always **200**."
     ),
-    response_model=APIResponse,
+    response_model=api_response(Overview),
 )
 def overview(
     redis_db: int = Query(0, ge=0, le=15, description="Redis DB index to report on"),
@@ -60,7 +64,7 @@ def overview(
     "/health",
     summary="Health check",
     description="Returns 200 if the service can connect to Redis, 503 otherwise.",
-    response_model=APIResponse,
+    response_model=api_response(HealthStatus),
 )
 def health():
     try:
