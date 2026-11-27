@@ -183,6 +183,9 @@ Read operations are open; write/destructive operations require 🔒 admin.
 |--------|------|-------------|
 | GET | `/redis/queues` | Scan for List + Stream keys; return depths sorted descending |
 | GET | `/redis/queues/{key}` | Deep-dive: List depth + sample, or Stream groups + pending |
+| GET | `/redis/queues/match/{key}` | Count list entries whose JSON field `path` equals a `value` (repeatable); positions + sample |
+| POST | `/redis/queues/reorder/{key}?to=head\|tail` | 🔒 Move every matching entry to head/tail in one Lua script (body `{path, values}`) |
+| POST | `/redis/queues/purge/{key}` | 🔒 Delete every matching entry in one Lua script; returns them in `removed` |
 
 ### Overview
 
