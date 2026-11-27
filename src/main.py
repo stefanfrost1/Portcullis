@@ -13,12 +13,17 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from http import HTTPStatus
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.config import settings
+from src.models.schemas import ErrorResponse
 from src.routers import redis_keys, redis_server, redis_queues, overview
 from src.services import redis_service as rs
 
@@ -79,6 +84,12 @@ app = FastAPI(
     redoc_url=f"{API_PREFIX}/redoc",
     openapi_url=f"{API_PREFIX}/openapi.json",
     lifespan=lifespan,
+    # Every error uses the same envelope (see the exception handlers below).
+    # Declaring 4XX also stops FastAPI from documenting its default 422 body.
+    responses={
+        "4XX": {"model": ErrorResponse, "description": "Client error"},
+        "5XX": {"model": ErrorResponse, "description": "Server error"},
+    },
 )
 
 
@@ -192,8 +203,43 @@ async def api_key_middleware(request: Request, call_next):
 
 
 # ---------------------------------------------------------------------------
-# Global error handler — log internally, never expose stack traces to clients
+# Error handlers — every error response is {"data": null, "error": {code, message}}
 # ---------------------------------------------------------------------------
+
+_ERROR_CODES = {500: "INTERNAL_ERROR", 422: "VALIDATION_ERROR"}
+
+
+def _error_response(status_code: int, message: str, details: list | None = None,
+                    headers: dict | None = None) -> JSONResponse:
+    try:
+        default_code = HTTPStatus(status_code).name
+    except ValueError:
+        default_code = f"HTTP_{status_code}"
+    error: dict = {"code": _ERROR_CODES.get(status_code, default_code), "message": message}
+    if details is not None:
+        error["details"] = details
+    return JSONResponse(status_code=status_code, content={"data": None, "error": error},
+                        headers=headers)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """HTTPExceptions raised by routes, plus FastAPI's own 404/405 for unknown routes."""
+    message = exc.detail if isinstance(exc.detail, str) else HTTPStatus(exc.status_code).phrase
+    return _error_response(exc.status_code, message, headers=getattr(exc, "headers", None))
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    details = [
+        {"loc": list(e.get("loc", ())), "msg": e.get("msg", ""), "type": e.get("type", "")}
+        for e in exc.errors()
+    ]
+    summary = "; ".join(
+        f"{'.'.join(str(p) for p in d['loc'])}: {d['msg']}" for d in details
+    )
+    return _error_response(422, f"Invalid request — {summary}" if summary else "Invalid request",
+                           details=jsonable_encoder(details))
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):

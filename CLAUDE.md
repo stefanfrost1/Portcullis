@@ -40,6 +40,8 @@ Portcullis/
 ├── build.ps1                    # Manual build/push helper (Windows)
 ├── docker-compose.yml           # Full stack: prebuilt images + Redis
 ├── requirements.txt             # Backend Python dependencies
+├── docs/
+│   └── openapi.json             # Generated OpenAPI spec (regenerate after API changes)
 ├── .github/
 │   └── workflows/
 │       └── docker-build.yml     # CI: build + push both images to Docker Hub
@@ -63,8 +65,9 @@ Portcullis/
     ├── config.py                # Pydantic-settings config (env vars)
     ├── __init__.py
     ├── models/
-    │   ├── schemas.py           # Generic APIResponse envelope
-    │   └── redis_schemas.py     # Redis request/body Pydantic models
+    │   ├── schemas.py           # Generic APIResponse envelope + api_response() helper
+    │   ├── redis_schemas.py     # Redis request/body Pydantic models
+    │   └── redis_responses.py   # Response `data` models (one per endpoint shape)
     ├── routers/
     │   ├── _auth.py             # RBAC dependency (get_role / require_admin)
     │   ├── overview.py          # /overview — Redis snapshot; /health — Redis reachability
@@ -183,9 +186,7 @@ Read operations are open; write/destructive operations require 🔒 admin.
 |--------|------|-------------|
 | GET | `/redis/queues` | Scan for List + Stream keys; return depths sorted descending |
 | GET | `/redis/queues/{key}` | Deep-dive: List depth + sample, or Stream groups + pending |
-| GET | `/redis/queues/match/{key}` | Count list entries whose JSON field `path` equals a `value` (repeatable); positions + sample |
-| POST | `/redis/queues/reorder/{key}?to=head\|tail` | 🔒 Move every matching entry to head/tail in one Lua script (body `{path, values}`) |
-| POST | `/redis/queues/purge/{key}` | 🔒 Delete every matching entry in one Lua script; returns them in `removed` |
+| POST | `/redis/queues/{key}/reorder` | 🔒 Move every List entry matching `term` to the top or bottom. Renames the queue to an unused temp key, reorders it there, then renames it back atomically; the reordered content stays first and entries pushed meanwhile are appended after it |
 
 ### Overview
 
@@ -202,14 +203,18 @@ All REST responses use this JSON shape:
 { "data": { ... }, "error": null }
 ```
 
-Error response:
+Error response (every 4xx/5xx, including unknown routes and validation errors):
 
 ```json
 {
   "data": null,
-  "error": { "code": "NOT_FOUND", "message": "Resource not found" }
+  "error": { "code": "NOT_FOUND", "message": "Key 'foo' does not exist" }
 }
 ```
+
+`code` is derived from the HTTP status: `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `CONFLICT`, `VALIDATION_ERROR` (422), `INTERNAL_ERROR` (500), `SERVICE_UNAVAILABLE`. Validation errors also carry `details`: one `{loc, msg, type}` entry per invalid input. The spec documents this as `ErrorResponse` on every operation (`4XX`/`5XX`).
+
+Every route declares the shape of `data` via `response_model=api_response(Model)`, so the OpenAPI spec (`/api/v1/openapi.json`, snapshot in `docs/openapi.json`) fully describes each response.
 
 HTTP status codes are used semantically. The `/overview` endpoint always returns 200; check the `"status": "error"` field inside the `redis` section for failures.
 
@@ -299,7 +304,8 @@ Routers that perform mutations (write, delete, lifecycle actions) declare `requi
 
 ### Error handling
 
-- **Router level:** `RedisError` exceptions are caught in each router and raised as `HTTPException`.
+- **Router level:** `RedisError` exceptions are caught in each router and raised as `HTTPException`. Give `HTTPException` a string `detail` — it becomes `error.message`.
+- **Envelope handlers:** `http_exception_handler` (all `HTTPException`s, plus FastAPI's own 404/405) and `validation_exception_handler` (422) in `main.py` turn every error into `{"data": null, "error": {code, message}}`.
 - **Global fallback:** `unhandled_exception_handler` in `main.py` logs the full traceback internally and returns a generic `500` — stack traces are never exposed to clients.
 
 ### WebSocket / streaming endpoints
@@ -482,14 +488,21 @@ Each router module:
 1. Declares an `APIRouter` with a `prefix` and `tags`
 2. Uses `require_admin` dependency on routes that mutate state
 3. Catches service-layer exceptions and raises `HTTPException`
-4. Wraps return values in `APIResponse(data=...)`
+4. Wraps return values in `APIResponse(data=...)` and declares `response_model=api_response(<Model>)` with a model from `redis_responses.py`
 
 ### Model pattern
 
-- `src/models/schemas.py` — generic `APIResponse` envelope
+- `src/models/schemas.py` — generic `APIResponse[T]` envelope, the `api_response(T)` helper (gives the envelope a readable schema name such as `KeyDetailResponse`), the `ResponseModel` base and shared field types (`Number`, `InfoStr`)
 - `src/models/redis_schemas.py` — Redis request body models
+- `src/models/redis_responses.py` — response `data` models, subclassing `ResponseModel`
 
-Do not add fields to response models that the service layer does not actually return.
+Do not add fields to response models that the service layer does not actually return. `ResponseModel` passes undeclared fields through rather than dropping them, and fields listed in `_omit_if_unset` are left out (not emitted as null) when the service does not return them — use this for fields that only some responses or Redis versions include. Use `Number` rather than `float` for numeric fields so ints are not rewritten as floats, and `InfoStr` for string values read from Redis INFO (redis-py turns numeric-looking INFO values into numbers).
+
+After changing an endpoint or model, regenerate the spec snapshot:
+
+```bash
+python -c "import json; from src.main import app; json.dump(app.openapi(), open('docs/openapi.json', 'w'), indent=2)"
+```
 
 ### Service layer
 
@@ -540,7 +553,7 @@ Claude agents must develop on branches matching the pattern `claude/<session-id>
 1. Create `src/routers/<name>.py` with an `APIRouter`
 2. Import `require_admin` from `_auth.py` and apply it to mutation routes
 3. Import and register the router in `src/main.py` with `app.include_router(..., prefix=API_PREFIX)`
-4. Add request/response models to `src/models/schemas.py` or `src/models/redis_schemas.py`
+4. Add request models to `src/models/redis_schemas.py` and response models to `src/models/redis_responses.py`; declare `response_model=api_response(<Model>)` on every route
 5. Add service logic to the appropriate file in `src/services/`
 6. Add frontend API client methods to `frontend/utils/api_client.py`
 7. Add a page to `frontend/app_pages/` and register it in `frontend/app.py`
@@ -562,4 +575,4 @@ This CLAUDE.md should be updated whenever:
 - Development workflows change
 - New conventions are adopted by the team
 
-*Last updated: 2026-11-21 (v4.0.0 — Docker management removed; Redis-only)*
+*Last updated: 2026-11-22 (v4.0.0 — typed response models; OpenAPI snapshot in docs/)*

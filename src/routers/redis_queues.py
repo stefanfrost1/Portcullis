@@ -3,19 +3,22 @@ Redis queue-depth monitoring endpoints.
 
   GET  /redis/queues          — scan for List + Stream keys; return depth sorted desc
   GET  /redis/queues/{key}    — deep-dive: List depth + sample, or Stream groups + pending
-  GET  /redis/queues/match/{key}    — count entries whose JSON field equals a value
-  POST /redis/queues/reorder/{key}  — 🔒 move those entries to head or tail, atomically
-  POST /redis/queues/purge/{key}    — 🔒 delete those entries, atomically
+  POST /redis/queues/{key}/reorder — 🔒 move all matching List entries to top/bottom
 
 Compatible with Redis 6.0+. Stream consumer-group `lag` field (Redis 7.0+) is returned
 as null when absent. PaaS instances that disable OBJECT/MEMORY commands still work.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from redis.exceptions import RedisError, ResponseError
+from redis.exceptions import RedisError
 
-from src.models.redis_schemas import RedisListSelectRequest
-from src.models.schemas import APIResponse
+from src.models.redis_responses import (
+    QueueDetail,
+    QueueReorderResult,
+    QueueSummary,
+)
+from src.models.redis_schemas import RedisQueueReorderRequest
+from src.models.schemas import APIResponse, api_response
 from src.routers._auth import require_admin
 from src.services import redis_service as rs
 
@@ -37,7 +40,7 @@ def _err(exc: Exception) -> HTTPException:
         "Uses SCAN + pipeline TYPE check (not SCAN TYPE filter) so it is compatible "
         "with Redis 6.0 and PaaS-managed instances."
     ),
-    response_model=APIResponse,
+    response_model=api_response(list[QueueSummary]),
 )
 def list_queues(
     pattern: str = Query("*", description="Key glob pattern to scan"),
@@ -138,7 +141,7 @@ def _select(key, path, values, mode, sample, db):
         "and the age (seconds) of the oldest unacknowledged message derived from the "
         "stream entry ID timestamp."
     ),
-    response_model=APIResponse,
+    response_model=api_response(QueueDetail),
 )
 def queue_detail(
     key: str,
@@ -147,5 +150,39 @@ def queue_detail(
 ):
     try:
         return APIResponse(data=rs.get_queue_detail(key=key, sample_count=sample_count, db=db))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'\""))
+    except RedisError as exc:
+        raise _err(exc)
+
+
+@router.post(
+    "/{key:path}/reorder",
+    summary="🔒 Move every matching List entry to the top or bottom of the queue",
+    description=(
+        "Moves all entries of List `key` matching `term` to the **top** (head, index 0) "
+        "or **bottom** (tail), keeping relative order inside both groups. `term` is a "
+        "case-insensitive substring, or a whole-value glob if it contains `*` or `?`.\n\n"
+        "To avoid reordering a moving target, the list is renamed to an unused temp key, "
+        "reordered there, and renamed back. The reordered content stays first; entries "
+        "pushed to `key` during the move are appended after it atomically — nothing is "
+        "overwritten. Consumers see an empty queue for the duration of the move."
+    ),
+    response_model=api_response(QueueReorderResult),
+)
+def reorder_queue(
+    key: str,
+    body: RedisQueueReorderRequest,
+    db: int = Query(0, ge=0, le=15),
+    _: None = Depends(require_admin),
+):
+    try:
+        return APIResponse(data=rs.reorder_queue(
+            key=key, term=body.term, position=body.position, db=db,
+        ))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc).strip("'\""))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except RedisError as exc:
         raise _err(exc)
