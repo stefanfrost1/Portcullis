@@ -442,6 +442,116 @@ def list_remove(key: str, value: str, count: int = 0, db: int = 0) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# List entries selected by a JSON field — count, move to head/tail, purge
+# ---------------------------------------------------------------------------
+#
+# Work queues are consumed from the head (LPOP / BLPOP) while an operator acts
+# on them, so a bulk move cannot be a read in Python followed by many writes:
+# a worker would pop between the two. One Lua script reads, partitions and
+# rewrites the list in a single atomic step instead. Entries that are not JSON
+# objects, or that lack the field, never match and keep their relative order.
+
+_LIST_SELECT_LUA = """
+local key = KEYS[1]
+local mode = ARGV[1]
+local path = cjson.decode(ARGV[2])
+local wanted = {}
+for _, v in ipairs(cjson.decode(ARGV[3])) do wanted[tostring(v)] = true end
+local sample = tonumber(ARGV[4])
+
+local t = redis.call('TYPE', key).ok
+if t ~= 'list' and t ~= 'none' then
+  return redis.error_reply('WRONGTYPE ' .. key .. ' is a ' .. t .. ', not a list')
+end
+
+local function matches(raw)
+  local ok, doc = pcall(cjson.decode, raw)
+  if not ok or type(doc) ~= 'table' then return false end
+  local cur = doc
+  for _, seg in ipairs(path) do
+    if type(cur) ~= 'table' then return false end
+    cur = cur[seg]
+    if cur == nil then return false end
+  end
+  local kind = type(cur)
+  if kind ~= 'string' and kind ~= 'number' and kind ~= 'boolean' then return false end
+  return wanted[tostring(cur)] == true
+end
+
+local items = redis.call('LRANGE', key, 0, -1)
+local hit, rest, positions = {}, {}, {}
+for i, raw in ipairs(items) do
+  if matches(raw) then
+    hit[#hit + 1] = raw
+    if #positions < sample then positions[#positions + 1] = i - 1 end
+  else
+    rest[#rest + 1] = raw
+  end
+end
+
+local function rewrite(first, second)
+  redis.call('DEL', key)
+  for _, part in ipairs({first, second}) do
+    for s = 1, #part, 1000 do
+      redis.call('RPUSH', key, unpack(part, s, math.min(s + 999, #part)))
+    end
+  end
+end
+
+local out = {length = #items, matched = #hit}
+if mode == 'count' then
+  out.positions = positions
+  out.sample = {unpack(hit, 1, math.min(sample, #hit))}
+elseif #hit > 0 then
+  if mode == 'head' then rewrite(hit, rest)
+  elseif mode == 'tail' then rewrite(rest, hit)
+  elseif mode == 'purge' then rewrite(rest, {}) ; out.removed = hit
+  else return redis.error_reply('unknown mode ' .. mode) end
+end
+out.length_after = redis.call('LLEN', key)
+return cjson.encode(out)
+"""
+
+
+def list_select(
+    key: str,
+    path: str,
+    values: list[str],
+    mode: str = "count",
+    sample: int = 20,
+    db: int = 0,
+) -> dict:
+    """Act on every list entry whose JSON field ``path`` (dot-separated, e.g.
+    ``targetData.sourceFilename``) equals one of ``values``.
+
+    ``mode``:
+      - ``count`` — read only: how many match, their first positions (0 = head,
+        the next to be popped) and a sample of them.
+      - ``head`` / ``tail`` — move every match to the front / back, keeping the
+        order among the matches and among the rest.
+      - ``purge`` — delete every match; the removed entries are returned so the
+        caller can clean up whatever they stood for.
+    """
+    if mode not in ("count", "head", "tail", "purge"):
+        raise ValueError(f"mode must be count, head, tail or purge, not {mode!r}")
+    segments = [s for s in path.split(".") if s]
+    if not segments:
+        raise ValueError("path must name at least one field")
+    raw = get_client(db).eval(
+        _LIST_SELECT_LUA, 1, key, mode, json.dumps(segments),
+        json.dumps([str(v) for v in values]), int(sample),
+    )
+    out = json.loads(raw)
+    if mode == "purge":
+        out.setdefault("removed", [])
+    # cjson encodes an empty Lua table as {} — callers expect lists.
+    for field in ("positions", "sample", "removed"):
+        if field in out and not isinstance(out[field], list):
+            out[field] = []
+    return {"key": key, "path": path, "mode": mode, **out}
+
+
+# ---------------------------------------------------------------------------
 # Set operations
 # ---------------------------------------------------------------------------
 

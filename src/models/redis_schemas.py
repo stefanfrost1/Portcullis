@@ -39,6 +39,12 @@ class RedisListRemoveRequest(BaseModel):
     count: int = 0                # 0 = remove all occurrences
 
 
+class RedisListSelectRequest(BaseModel):
+    """Entries whose JSON field `path` equals one of `values`."""
+    path: str = Field(..., description="Dot path into each JSON entry, e.g. targetData.sourceFilename")
+    values: list[str] = Field(..., min_length=1, description="Match when the field equals any of these")
+
+
 # ---------------------------------------------------------------------------
 # Set
 # ---------------------------------------------------------------------------
